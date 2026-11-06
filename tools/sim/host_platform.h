@@ -25,14 +25,6 @@ static void displayTime(struct tm &out, int &ms) {
     ms = (int)(gSimEpochMs % 1000);
 }
 
-static void cityTime(uint8_t city, struct tm &out) {
-    time_t t = (time_t)(gSimEpochMs / 1000) + S.testOffset;
-    setenv("TZ", kCities[city].posix, 1);
-    tzset();
-    localtime_r(&t, &out);
-    applyHomeZone();
-}
-
 const char *AP_PASS = "halo1234";
 
 // ---- Fake panel ------------------------------------------------------------

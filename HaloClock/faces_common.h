@@ -14,13 +14,10 @@ static const uint16_t C_WHITE = 0xFFFF;
 static const uint16_t C_TEXT = HEX565(0xf5f5f7);
 static const uint16_t C_DIM = HEX565(0x98989d);
 static const uint16_t C_FAINT = HEX565(0x5a5a5f);
-static const uint16_t C_MINOR = HEX565(0x48484a);
 static const uint16_t C_TRACK = HEX565(0x242426);
 static const uint16_t C_PEACH = HEX565(0xffd3b6);
 static const uint16_t C_CORAL = HEX565(0xffaaa5);
 static const uint16_t C_MINT = HEX565(0xa8e6cf);
-static const uint16_t PASTELS[6] = {HEX565(0xa8d8ea), HEX565(0xcdb9f0), HEX565(0xffe8a3),
-                                    HEX565(0xa8e6cf), HEX565(0xffd3b6), HEX565(0xffaaa5)};
 
 // Everything a face needs to know about "now", read once per frame.
 struct FrameTime {
@@ -28,14 +25,6 @@ struct FrameTime {
     int ms;           // milliseconds into the current second
     int64_t realMs;   // real epoch milliseconds, for timers
 };
-
-static void fmtMMSS(char *buf, size_t n, long secs) {
-    snprintf(buf, n, "%02ld:%02ld", secs / 60, secs % 60);
-}
-
-static void fmt12(char *buf, size_t n, int h, int m) {
-    snprintf(buf, n, "%d:%02d %s", (h % 12) ? h % 12 : 12, m, h >= 12 ? "pm" : "am");
-}
 
 static void upperCopy(char *dst, const char *src, size_t n) {
     size_t i = 0;

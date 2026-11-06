@@ -56,14 +56,6 @@ static void displayTime(struct tm &out, int &ms) {
     ms = tv.tv_usec / 1000;
 }
 
-static void cityTime(uint8_t city, struct tm &out) {
-    time_t t = time(nullptr) + S.testOffset;
-    setenv("TZ", kCities[city].posix, 1);
-    tzset();
-    localtime_r(&t, &out);
-    applyHomeZone();
-}
-
 static void setClockEpoch(int64_t epoch) {
     struct timeval tv = {(time_t)epoch, 0};
     settimeofday(&tv, nullptr);

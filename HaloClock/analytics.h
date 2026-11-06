@@ -1,7 +1,7 @@
 // Diagnostics and usage stats, reported by GET /api/info for the app's analytics page.
 //
 // Drawing stats cover the last complete 10 second window. Face usage is since
-// boot; boots, exams and focus sessions are kept in flash across restarts.
+// boot; boots are kept in flash across restarts.
 #pragma once
 #include <esp_system.h>
 #include <esp_timer.h>
@@ -20,7 +20,7 @@ struct Analytics {
     uint64_t faceMs[FACE_COUNT + 1];  // last slot: the setup screen
     uint32_t requests;
     // Kept in flash
-    uint32_t boots, examsStarted, focusStarted;
+    uint32_t boots;
 };
 
 Analytics A;
@@ -30,15 +30,10 @@ static void analyticsBegin() {
     statPrefs.begin("halostats", false);
     A.boots = statPrefs.getUInt("boots", 0) + 1;
     statPrefs.putUInt("boots", A.boots);
-    A.examsStarted = statPrefs.getUInt("exams", 0);
-    A.focusStarted = statPrefs.getUInt("focus", 0);
     A.winStart = millis();
     A.winStats = gStats;
     A.lastWindows = gStats.windows;
 }
-
-static void analyticsExamStarted() { statPrefs.putUInt("exams", ++A.examsStarted); }
-static void analyticsFocusStarted() { statPrefs.putUInt("focus", ++A.focusStarted); }
 
 // Called after every frame: how long drawing took, the time since the last
 // frame, and which face was on screen.

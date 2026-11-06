@@ -1,6 +1,6 @@
 # Halo
 
-A 2.1" round smart clock, built on an ESP32-C3 Zero and a 360×360 GC9B72 TFT. It started as a classroom clock and now runs at home as a weather clock.
+A 2.1" round smart clock, built on an ESP32-C3 Zero and a 360×360 GC9B72 TFT. It started as a classroom clock and is now a single-purpose home weather clock.
 
 - **Weather face:** time, temperature, conditions, high and low, and the next 12 hours of rain chance around the rim.
 - **Night dimming:** the backlight drops to a low level on a schedule.
@@ -41,7 +41,7 @@ POST bodies are form-encoded.
 | `GET /api/state` | Settings, network, weather and update status |
 | `GET /api/weather` | Weather only |
 | `POST /api/weather` | Fetch new weather now |
-| `POST /api/set` | Change settings: `face`, `brightness`, `lat` with `lon`, `place`, `nightOn`, `nightStart`, `nightEnd`, `nightBrightness` and more |
+| `POST /api/set` | Change settings: `brightness`, `home`, `lat` with `lon`, `place`, `nightOn`, `nightStart`, `nightEnd`, `nightBrightness`, `testOffset`, `deviceName` |
 | `POST /api/update` | `a=check` or `a=install` |
 | `GET /api/info` | Diagnostics |
 

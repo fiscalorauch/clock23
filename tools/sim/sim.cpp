@@ -8,9 +8,8 @@
 // It also reports how many pixels and SPI windows each frame needed, and
 // writes PNG snapshots to tools/sim/out/.
 //
-// Build and run from the "OLED Code" folder:
-//   tools/sim/run.sh [name-filter]              all faces
-//   ONLY=learn tools/sim/run.sh [name-filter]   one face file (classic, learn, timers, zones, schedule)
+// Build and run from the repo root:
+//   tools/sim/run.sh [name-filter]
 #include <sys/stat.h>
 #include <chrono>
 #include <string>
@@ -23,7 +22,6 @@ static const char *kOutDir = "tools/sim/out";
 
 struct Scenario {
     const char *name;    // start with the face name so filters work
-    int face;
     const char *start;   // local time "YYYY-MM-DD HH:MM:SS" in the home zone (Melbourne by default)
     double seconds;      // how long to run
     int stepMs;          // frame interval
@@ -108,7 +106,6 @@ static int64_t parseLocal(const char *s) {
 
 static bool runScenario(const Scenario &sc) {
     defaultSettings();
-    S.face = sc.face;
     publishWeather(WeatherData{});
     gUpdatePct = -1;
     applyHomeZone();
@@ -168,53 +165,17 @@ static bool runScenario(const Scenario &sc) {
 }
 
 // ---- Scenarios (one file per face) ----------------------------------------
-#if !defined(ONLY_FACE) || defined(ONLY_CLASSIC)
-#include "scenarios_classic.h"
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_LEARN)
-#include "scenarios_learn.h"
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_TIMERS)
-#include "scenarios_timers.h"
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_ZONES)
-#include "scenarios_zones.h"
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
-#include "scenarios_schedule.h"
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
 #include "scenarios_weather.h"
-#endif
 
 int main(int argc, char **argv) {
     mkdir(kOutDir, 0755);
     std::vector<Scenario> all;
-    all.push_back({"setup", FACE_CLASSIC, "2000-01-01 00:00:00", 2, 100, nullptr, nullptr});
-#if !defined(ONLY_FACE) || defined(ONLY_CLASSIC)
-    addClassicScenarios(all);
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_LEARN)
-    addLearnScenarios(all);
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_TIMERS)
-    addTimersScenarios(all);
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_ZONES)
-    addZonesScenarios(all);
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
-    addScheduleScenarios(all);
-#endif
-#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+    all.push_back({"setup", "2000-01-01 00:00:00", 2, 100, nullptr, nullptr});
     addWeatherScenarios(all);
-#endif
 
     const char *only = argc > 1 ? argv[1] : nullptr;
     int failed = 0, ran = 0;
-#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
     if (!only) failed += weatherParserTests() ? 1 : 0;
-#endif
     for (const Scenario &sc : all) {
         if (only && !strstr(sc.name, only)) continue;
         ran++;

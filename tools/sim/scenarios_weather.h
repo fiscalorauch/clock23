@@ -62,20 +62,20 @@ static void wxArrives(int64_t now, int64_t start) {
 static void updateRun(int64_t now, int64_t start) { gUpdatePct = (int8_t)((now - start) / 200 > 100 ? 100 : (now - start) / 200); }
 
 static void addWeatherScenarios(std::vector<Scenario> &v) {
-    v.push_back({"weather_partly", FACE_WEATHER, "2026-09-15 10:09:50", 20, 33, wxPartly, nullptr});
-    v.push_back({"weather_sun", FACE_WEATHER, "2026-12-20 13:30:00", 2, 100, wxSun, nullptr});
-    v.push_back({"weather_moon", FACE_WEATHER, "2026-09-15 22:45:00", 2, 100, wxMoon, nullptr});
-    v.push_back({"weather_rain", FACE_WEATHER, "2026-09-15 16:20:00", 2, 100, wxRain, nullptr});
-    v.push_back({"weather_storm", FACE_WEATHER, "2026-09-15 19:05:00", 2, 100, wxStorm, nullptr});
-    v.push_back({"weather_fog", FACE_WEATHER, "2026-09-15 07:12:00", 2, 100, wxFog, nullptr});
-    v.push_back({"weather_snow", FACE_WEATHER, "2026-09-15 11:11:00", 2, 100, wxSnow, nullptr});
-    v.push_back({"weather_overcast", FACE_WEATHER, "2026-09-15 12:00:00", 2, 100, wxOvercast, nullptr});
-    v.push_back({"weather_stale", FACE_WEATHER, "2026-09-15 09:15:00", 2, 100, wxStale, nullptr});
-    v.push_back({"weather_waiting", FACE_WEATHER, "2026-09-15 09:15:00", 2, 100, nullptr, nullptr});
-    v.push_back({"weather_arrives", FACE_WEATHER, "2026-09-15 09:15:00", 6, 100, nullptr, wxArrives});
-    v.push_back({"weather_codes", FACE_WEATHER, "2026-09-15 15:00:00", 28, 100, nullptr, wxCycle});
-    v.push_back({"weather_hours", FACE_WEATHER, "2026-09-15 23:30:00", 14 * 3600, 60000, wxRain, nullptr});
-    v.push_back({"update_progress", FACE_WEATHER, "2026-09-15 09:15:00", 21, 100, wxPartly, updateRun});
+    v.push_back({"weather_partly", "2026-09-15 10:09:50", 20, 33, wxPartly, nullptr});
+    v.push_back({"weather_sun", "2026-12-20 13:30:00", 2, 100, wxSun, nullptr});
+    v.push_back({"weather_moon", "2026-09-15 22:45:00", 2, 100, wxMoon, nullptr});
+    v.push_back({"weather_rain", "2026-09-15 16:20:00", 2, 100, wxRain, nullptr});
+    v.push_back({"weather_storm", "2026-09-15 19:05:00", 2, 100, wxStorm, nullptr});
+    v.push_back({"weather_fog", "2026-09-15 07:12:00", 2, 100, wxFog, nullptr});
+    v.push_back({"weather_snow", "2026-09-15 11:11:00", 2, 100, wxSnow, nullptr});
+    v.push_back({"weather_overcast", "2026-09-15 12:00:00", 2, 100, wxOvercast, nullptr});
+    v.push_back({"weather_stale", "2026-09-15 09:15:00", 2, 100, wxStale, nullptr});
+    v.push_back({"weather_waiting", "2026-09-15 09:15:00", 2, 100, nullptr, nullptr});
+    v.push_back({"weather_arrives", "2026-09-15 09:15:00", 6, 100, nullptr, wxArrives});
+    v.push_back({"weather_codes", "2026-09-15 15:00:00", 28, 100, nullptr, wxCycle});
+    v.push_back({"weather_hours", "2026-09-15 23:30:00", 14 * 3600, 60000, wxRain, nullptr});
+    v.push_back({"update_progress", "2026-09-15 09:15:00", 21, 100, wxPartly, updateRun});
 }
 
 // Checks the parser against a real response and against damaged ones.

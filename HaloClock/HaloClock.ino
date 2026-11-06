@@ -147,5 +147,5 @@ void loop() {
 
     unsigned long t0 = micros();
     drawClock();
-    analyticsFrame(micros() - t0, gap, timeValid() ? S.face : FACE_COUNT);
+    analyticsFrame(micros() - t0, gap, timeValid() ? FACE_WEATHER : FACE_COUNT);
 }

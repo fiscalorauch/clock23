@@ -19,9 +19,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
   .dot.ok { background:#a8e6cf; } .dot.bad { background:#ffaaa5; }
   .now { font-size:46px; font-weight:300; font-variant-numeric:tabular-nums; margin:6px 0 16px; }
   .now small { font-size:14px; font-weight:500; color:var(--dim); margin-left:8px; }
-  .faces { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; background:var(--panel); border:1px solid var(--line); padding:6px; border-radius:16px; margin-bottom:14px; }
-  .faces button { font:inherit; font-size:14px; font-weight:560; color:var(--dim); background:transparent; border:0; padding:10px 6px; border-radius:11px; cursor:pointer; }
-  .faces button.on { color:#0e0e10; background:var(--text); }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:14px; }
   .card h2 { font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.1em; color:var(--dim); margin-bottom:14px; }
   .field { margin-bottom:12px; }
@@ -34,17 +31,9 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
   .row > * { flex:1; }
   .btn { font:inherit; font-size:14px; font-weight:600; cursor:pointer; background:var(--accent); color:#08151f; border:0; border-radius:9px; padding:11px 14px; }
   .btn.ghost { background:var(--panel-2); color:var(--text); border:1px solid var(--line); }
-  .btn.stop { background:#3a2224; color:#ffaaa5; }
   .seg { display:flex; gap:8px; }
   .seg div { flex:1; text-align:center; font-size:14px; font-weight:560; cursor:pointer; background:var(--panel-2); border:1px solid var(--line); color:var(--dim); padding:10px; border-radius:9px; }
   .seg div.on { background:var(--accent); border-color:var(--accent); color:#08151f; }
-  .timer { font-size:42px; font-weight:300; font-variant-numeric:tabular-nums; margin:0 0 12px; }
-  .sched { display:grid; grid-template-columns:10px 1.3fr 1fr 1fr 38px; gap:6px; align-items:center; margin-bottom:8px; }
-  .sched input { padding:9px 5px; font-size:14px; }
-  .sw { width:10px; height:28px; border-radius:4px; }
-  .x { height:38px; border-radius:9px; background:var(--panel-2); border:1px solid var(--line); color:var(--dim); font-size:18px; cursor:pointer; }
-  .saved { font-size:13px; color:#a8e6cf; opacity:0; transition:opacity .3s; margin-top:10px; }
-  .saved.show { opacity:1; }
   footer { font-size:12px; color:#5a5a5f; text-align:center; margin-top:18px; }
 </style>
 </head>
@@ -52,7 +41,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <div class="wrap">
   <header><h1>Halo</h1><div class="status" id="status"><span class="dot"></span>Connecting…</div></header>
   <div class="now" id="now">--:--</div>
-  <div class="faces" id="faces"></div>
   <div id="faceCard"></div>
   <div class="card" id="displayCard"></div>
   <div class="card" id="updateCard"></div>
@@ -63,8 +51,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 </div>
 <script>
 (() => {
-  const FACES = [['weather','Weather'], ['classic','Classic'], ['zones','Zones'], ['learn','Learn'], ['exam','Exam'], ['focus','Focus'], ['schedule','Schedule']];
-  const PASTELS = ['#a8d8ea', '#cdb9f0', '#ffe8a3', '#a8e6cf', '#ffd3b6', '#ffaaa5'];
   // Same order as kCities in settings.h.
   const TZ = ['Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo', 'Asia/Shanghai',
               'Asia/Singapore', 'Asia/Dubai', 'Asia/Kolkata', 'Australia/Sydney', 'Australia/Melbourne', 'Pacific/Auckland', 'Pacific/Honolulu'];
@@ -74,7 +60,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
   const pad = n => String(n).padStart(2, '0');
   const m2t = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
   const t2m = t => { const [a, b] = t.split(':').map(Number); return a * 60 + b; };
-  const mmss = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
 
   const h = (tag, props = {}, kids = []) => {
     const e = document.createElement(tag);
@@ -109,15 +94,14 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
     }
   }
   const set = (params, rerender = true) => call('/api/set', params, { rerender });
-  const action = a => call('/api/action', { a });
   const syncTime = () => call('/api/time', { epoch: Math.floor(Date.now() / 1000) }, { rerender: false });
   const poll = () => call('/api/state', {}, { method: 'GET', rerender: false });
 
   function apply(s, rerender) {
-    const first = !st, faceChanged = !st || st.face !== s.face;
+    const first = !st;
     st = s;
     polledAt = Date.now();
-    if (first || faceChanged || rerender) { renderFaces(); renderFaceCard(); }
+    if (first || rerender) renderWeather();
     if (first) { renderDisplay(); renderWifi(); renderTime(); }
     const u = JSON.stringify(s.update);
     if (u !== updateKey) { updateKey = u; renderUpdate(); }
@@ -151,66 +135,14 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
       $('now').innerHTML = '';
       $('now').append(`${hh % 12 || 12}:${pad(m)}`, h('small', { text: `${hh >= 12 ? 'pm' : 'am'} · ${st.cities[st.home]}${st.testOffset ? ' · custom' : ''}` }));
     }
-    const tl = $('timerLeft');
-    if (tl) {
-      const exam = st.face === 'exam';
-      const left = exam ? st.examLeft : st.focusLeft, mins = exam ? st.examMin : st.focusMin;
-      const elapsed = Math.floor((Date.now() - polledAt) / 1000);
-      tl.textContent = left < 0 ? mmss(mins * 60) : mmss(Math.max(0, left - elapsed));
-      tl.style.color = left < 0 ? 'var(--dim)' : '';
-    }
   }
 
-  function renderFaces() {
-    const bar = $('faces');
-    bar.innerHTML = '';
-    FACES.forEach(([id, label]) => bar.append(h('button', { class: st.face === id ? 'on' : '', text: label, onclick: () => set({ face: id }) })));
-  }
-
-  function renderFaceCard() {
+  function renderWeather() {
     const holder = $('faceCard');
     holder.innerHTML = '';
     const card = h('div', { class: 'card' });
     holder.append(card);
-    const f = st.face;
-
-    if (f === 'classic' || f === 'learn') {
-      card.append(h('h2', { text: f === 'classic' ? 'Classic' : 'Learn' }),
-        h('div', { class: 'note', text: f === 'classic'
-          ? 'A plain analogue face for everyday reading.'
-          : 'Colour-matched hands with the time in words, like "quarter to one", to help students learn to read the clock.' }));
-    } else if (f === 'exam' || f === 'focus') {
-      const exam = f === 'exam';
-      const label = h('input', { type: 'text', maxlength: exam ? 38 : 30, value: exam ? st.examSubject : st.focusLabel });
-      const dur = h('input', { type: 'number', min: 1, max: exam ? 240 : 180, value: exam ? st.examMin : st.focusMin });
-      card.append(h('h2', { text: exam ? 'Exam timer' : 'Focus timer' }),
-        h('div', { class: 'timer', id: 'timerLeft' }),
-        h('div', { class: 'field' }, [h('label', { text: exam ? 'Subject / label' : 'Label' }), label]),
-        h('div', { class: 'field' }, [h('label', { text: 'Duration (minutes)' }), dur]),
-        h('div', { class: 'row' }, [
-          h('button', { class: 'btn', text: 'Start / Restart', onclick: async () => {
-            await set(exam ? { examSubject: label.value, examMin: dur.value } : { focusLabel: label.value, focusMin: dur.value }, false);
-            action(exam ? 'examStart' : 'focusStart');
-          } }),
-          h('button', { class: 'btn stop', text: 'Stop', onclick: () => action(exam ? 'examStop' : 'focusStop') }),
-        ]));
-    } else if (f === 'zones') {
-      card.append(h('h2', { text: 'Time zones' }));
-      st.zones.forEach((zone, i) => {
-        const sel = h('select', { onchange: e => { const z = [...st.zones]; z[i] = e.target.value; set({ zones: z.join(',') }); } },
-          st.cities.map((name, ci) => h('option', { value: ci, selected: ci === zone }, name)));
-        card.append(h('div', { class: 'field' }, [
-          h('label', { text: `City ${i + 1}` }),
-          h('div', { class: 'row' }, [h('div', { class: 'sw', style: `flex:0 0 10px;background:${PASTELS[i]}` }), sel]),
-        ]));
-      });
-      card.append(h('div', { class: 'note', text: 'White hands show local time; each coloured hand shows a city.' }));
-    } else if (f === 'weather') {
-      weatherCard(card);
-    } else {
-      scheduleCard(card);
-    }
-    tick();
+    weatherCard(card);
   }
 
   function wxSummary() {
@@ -266,40 +198,6 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
       h('div', { class: 'note', style: 'margin-bottom:12px', text: `Version ${st.firmware}. ${line}` }));
     if (u.state === 'available') card.append(h('button', { class: 'btn', style: 'width:100%', text: 'Update now', onclick: () => go('install') }));
     else if (!['checking', 'installing', 'done'].includes(u.state)) card.append(h('button', { class: 'btn ghost', style: 'width:100%', text: 'Check for updates', onclick: () => go('check') }));
-  }
-
-  function scheduleCard(card) {
-    let rows = st.schedule.map(p => ({ ...p }));
-    const list = h('div');
-    const saved = h('div', { class: 'saved', text: 'Saved to the clock' });
-    const draw = () => {
-      list.innerHTML = '';
-      rows.forEach((p, i) => list.append(h('div', { class: 'sched' }, [
-        h('div', { class: 'sw', style: `background:${PASTELS[i % PASTELS.length]}` }),
-        h('input', { type: 'text', maxlength: 23, value: p.name, oninput: e => { p.name = e.target.value; } }),
-        h('input', { type: 'time', value: m2t(p.start), onchange: e => { p.start = t2m(e.target.value); } }),
-        h('input', { type: 'time', value: m2t(p.end), onchange: e => { p.end = t2m(e.target.value); } }),
-        h('button', { class: 'x', text: '×', title: 'Remove', onclick: () => { rows.splice(i, 1); draw(); } }),
-      ])));
-    };
-    draw();
-    card.append(h('h2', { text: 'Timetable' }), list,
-      h('div', { class: 'row', style: 'margin-top:6px' }, [
-        h('button', { class: 'btn ghost', text: '+ Add period', onclick: () => {
-          if (rows.length >= 12) return;
-          const last = rows[rows.length - 1], start = last ? last.end : 540;
-          rows.push({ name: 'New', start, end: Math.min(1439, start + 45) });
-          draw();
-        } }),
-        h('button', { class: 'btn', text: 'Save timetable', onclick: async () => {
-          rows.sort((a, b) => a.start - b.start);
-          const text = rows.map(p => `${p.name.replace(/[|\n]/g, ' ').trim() || 'Period'}|${p.start}|${p.end}`).join('\n');
-          await set({ schedule: text }, false);
-          draw();
-          saved.classList.add('show');
-          setTimeout(() => saved.classList.remove('show'), 1800);
-        } }),
-      ]), saved);
   }
 
   function renderDisplay() {

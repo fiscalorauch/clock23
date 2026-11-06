@@ -20,11 +20,6 @@ static void jsonStr(String &o, const char *s) {
     o += '"';
 }
 
-static long timerLeft(int64_t end) {
-    if (end <= 0) return -1;
-    return max<long>(0, (long)(end - realNow()));
-}
-
 // Current weather, in /api/state and /api/weather (handy for Home Assistant).
 static void wxJson(String &o) {
     const WeatherData &w = *gWx;
@@ -49,18 +44,10 @@ static void sendState() {
     A.requests++;
     String o;
     o.reserve(2800);
-    o += "{\"face\":\""; o += kFaceIds[S.face]; o += '"';
-    o += ",\"firmware\":\"" FIRMWARE_VERSION "\"";
+    o += "{\"firmware\":\"" FIRMWARE_VERSION "\"";
     o += ",\"deviceName\":"; jsonStr(o, gDeviceName);
     o += ",\"brightness\":"; o += S.brightness;
     o += ",\"home\":"; o += S.homeCity;
-    o += ",\"zones\":["; for (int i = 0; i < NUM_ZONES; i++) { if (i) o += ','; o += S.zones[i]; } o += ']';
-    o += ",\"examSubject\":"; jsonStr(o, S.examSubject);
-    o += ",\"examMin\":"; o += S.examMin;
-    o += ",\"examLeft\":"; o += timerLeft(S.examEnd);
-    o += ",\"focusLabel\":"; jsonStr(o, S.focusLabel);
-    o += ",\"focusMin\":"; o += S.focusMin;
-    o += ",\"focusLeft\":"; o += timerLeft(S.focusEnd);
     o += ",\"testOffset\":"; o += S.testOffset;
     o += ",\"lat\":"; o += String(S.lat, 3);
     o += ",\"lon\":"; o += String(S.lon, 3);
@@ -75,14 +62,7 @@ static void sendState() {
     o += ",\"latest\":"; jsonStr(o, gUpLatest);
     o += ",\"pct\":"; o += (int)gUpdatePct;
     o += ",\"error\":"; jsonStr(o, gUpError); o += '}';
-    o += ",\"schedule\":[";
-    for (int i = 0; i < S.numPeriods; i++) {
-        if (i) o += ',';
-        o += "{\"name\":"; jsonStr(o, S.periods[i].name);
-        o += ",\"start\":"; o += S.periods[i].start;
-        o += ",\"end\":"; o += S.periods[i].end; o += '}';
-    }
-    o += "],\"cities\":[";
+    o += ",\"cities\":[";
     for (int i = 0; i < kNumCities; i++) { if (i) o += ','; jsonStr(o, kCities[i].label); }
     o += "],\"timeValid\":"; o += timeValid() ? "true" : "false";
     o += ",\"now\":"; o += String((double)realNow(), 0);
@@ -108,32 +88,10 @@ static void copyArg(const char *name, char *dst, size_t n) {
     strlcpy(dst, v.c_str(), n);
 }
 
-static void parseSchedule(const String &text) {
-    char buf[1024];
-    strlcpy(buf, text.c_str(), sizeof(buf));
-    S.numPeriods = 0;
-    char *rowSave;
-    for (char *row = strtok_r(buf, "\n", &rowSave); row && S.numPeriods < MAX_PERIODS; row = strtok_r(nullptr, "\n", &rowSave)) {
-        char *fieldSave;
-        char *name = strtok_r(row, "|", &fieldSave);
-        char *start = strtok_r(nullptr, "|", &fieldSave);
-        char *end = strtok_r(nullptr, "|", &fieldSave);
-        if (!name || !start || !end) continue;
-        Period &p = S.periods[S.numPeriods];
-        strlcpy(p.name, name, sizeof(p.name));
-        p.start = constrain(atoi(start), 0, 1439);
-        p.end = constrain(atoi(end), 1, 1440);
-        if (p.end > p.start) S.numPeriods++;
-    }
-}
-
-// POST /api/set — any subset of: face, brightness, home, zones, examSubject, examMin,
-// focusLabel, focusMin, testOffset, schedule ("name|start|end" rows, minutes after midnight).
+// POST /api/set — any subset of: brightness, home, testOffset, lat with lon, place, nightOn,
+// nightBrightness, nightStart, nightEnd, deviceName.
 // No explicit redraw is needed: the next frame's scene differs and only that is repainted.
 static void handleSet() {
-    if (server.hasArg("face"))
-        for (int i = 0; i < FACE_COUNT; i++)
-            if (server.arg("face") == kFaceIds[i]) S.face = i;
     if (server.hasArg("brightness")) {
         S.brightness = constrain(server.arg("brightness").toInt(), 5, 100);
         applyBrightness();
@@ -142,23 +100,7 @@ static void handleSet() {
         S.homeCity = constrain(server.arg("home").toInt(), 0, kNumCities - 1);
         applyHomeZone();
     }
-    if (server.hasArg("zones")) {
-        String z = server.arg("zones");
-        int from = 0;
-        for (int i = 0; i < NUM_ZONES; i++) {
-            int comma = z.indexOf(',', from);
-            String part = comma < 0 ? z.substring(from) : z.substring(from, comma);
-            if (part.length()) S.zones[i] = constrain(part.toInt(), 0, kNumCities - 1);
-            if (comma < 0) break;
-            from = comma + 1;
-        }
-    }
-    if (server.hasArg("examSubject")) copyArg("examSubject", S.examSubject, sizeof(S.examSubject));
-    if (server.hasArg("examMin")) S.examMin = constrain(server.arg("examMin").toInt(), 1, 240);
-    if (server.hasArg("focusLabel")) copyArg("focusLabel", S.focusLabel, sizeof(S.focusLabel));
-    if (server.hasArg("focusMin")) S.focusMin = constrain(server.arg("focusMin").toInt(), 1, 180);
     if (server.hasArg("testOffset")) S.testOffset = constrain(server.arg("testOffset").toInt(), -604800L, 604800L);
-    if (server.hasArg("schedule")) parseSchedule(server.arg("schedule"));
     if (server.hasArg("lat") && server.hasArg("lon")) {
         S.lat = constrain(server.arg("lat").toFloat(), -90.0f, 90.0f);
         S.lon = constrain(server.arg("lon").toFloat(), -180.0f, 180.0f);
@@ -174,17 +116,6 @@ static void handleSet() {
         copyArg("deviceName", name, sizeof(name));
         saveDeviceName(name);
     }
-    saveSettings();
-    sendState();
-}
-
-// POST /api/action?a=examStart|examStop|focusStart|focusStop
-static void handleAction() {
-    String a = server.arg("a");
-    if (a == "examStart") { S.examEnd = realNow() + S.examMin * 60L; S.face = FACE_EXAM; analyticsExamStarted(); }
-    else if (a == "examStop") S.examEnd = 0;
-    else if (a == "focusStart") { S.focusEnd = realNow() + S.focusMin * 60L; S.face = FACE_FOCUS; analyticsFocusStarted(); }
-    else if (a == "focusStop") S.focusEnd = 0;
     saveSettings();
     sendState();
 }
@@ -296,8 +227,7 @@ static void handleInfo() {
         if (i) o += ',';
         o += (uint32_t)(A.faceMs[i] / 1000);
     }
-    o += "],\"examsStarted\":"; o += A.examsStarted;
-    o += ",\"focusStarted\":"; o += A.focusStarted;
+    o += ']';
     o += '}';
     server.sendHeader("Cache-Control", "no-store");
     server.send(200, "application/json", o);
@@ -307,7 +237,6 @@ static void webBegin() {
     server.on("/", HTTP_GET, [] { server.send_P(200, "text/html", DASHBOARD_HTML); });
     server.on("/api/state", HTTP_GET, sendState);
     server.on("/api/set", HTTP_POST, handleSet);
-    server.on("/api/action", HTTP_POST, handleAction);
     server.on("/api/time", HTTP_POST, handleTime);
     server.on("/api/wifi", HTTP_POST, handleWifi);
     server.on("/api/info", HTTP_GET, handleInfo);
