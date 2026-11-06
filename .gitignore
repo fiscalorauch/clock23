@@ -1,0 +1,6 @@
+HaloClock/secrets.h
+tools/sim/out/
+tools/sim/sim
+tools/sim/stress
+.DS_Store
+build/
