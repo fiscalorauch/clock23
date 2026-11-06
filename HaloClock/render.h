@@ -163,10 +163,11 @@ static void addCircle(Scene &s, float cx, float cy, float r, uint16_t col, uint8
 }
 
 static void addRing(Scene &s, float cx, float cy, float rIn, float rOut, uint16_t col, uint8_t alpha = 255) {
+    if (rIn < 0) rIn = 0;  // so a shown ring has rOut > 0: the rasteriser needs that
     Prim *p = primAdd(s, rOut > rIn ? PR_RING : PR_NONE, col, alpha);
     if (!p || p->type == PR_NONE) return;
     int32_t x = q4(cx), y = q4(cy), ro = q4(rOut);
-    p->p[0] = x; p->p[1] = y; p->p[2] = q4(rIn > 0 ? rIn : 0); p->p[3] = ro;
+    p->p[0] = x; p->p[1] = y; p->p[2] = q4(rIn); p->p[3] = ro;
     setBounds(p, x - ro, y - ro, x + ro, y + ro);
 }
 
@@ -181,28 +182,33 @@ static void addArc(Scene &s, float cx, float cy, float rIn, float rOut, float a0
                    uint8_t alpha = 255) {
     float span = a1 - a0;
     if (span > 360.0f) span = 360.0f;
+    if (rIn < 0) rIn = 0;  // so a shown arc has rOut > 0: the rasteriser needs that
     Prim *p = primAdd(s, (span >= 0.01f && rOut > rIn) ? PR_ARC : PR_NONE, col, alpha);
     if (!p || p->type == PR_NONE) return;
     float start = fmodf(a0, 360.0f);
     if (start < 0) start += 360.0f;
     int32_t c0 = lroundf(start * 100.0f), c1 = c0 + lroundf(span * 100.0f);
     int32_t x = q4(cx), y = q4(cy);
-    p->p[0] = x; p->p[1] = y; p->p[2] = q4(rIn > 0 ? rIn : 0); p->p[3] = q4(rOut);
+    p->p[0] = x; p->p[1] = y; p->p[2] = q4(rIn); p->p[3] = q4(rOut);
     arcDir(c0, p->p[4], p->p[5]);
     arcDir(c1, p->p[6], p->p[7]);
     p->p[8] = c0; p->p[9] = c1;
 
-    // Bounds: both ends plus any compass extremes the arc sweeps through.
+    // Bounds: both ends plus any compass extremes the arc sweeps through. Worked out from
+    // the stored values, not the arguments: bounds clip what's drawn and primSame() only
+    // compares p[], so equal p[] must mean equal bounds.
+    float qx = x / 16.0f, qy = y / 16.0f, ri = p->p[2] / 16.0f, ro = p->p[3] / 16.0f;
+    float qStart = c0 / 100.0f, qSpan = (c1 - c0) / 100.0f;
     float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
     auto grow = [&](float r, float deg) {
         float a = (deg - 90.0f) * (float)M_PI / 180.0f;
-        float px = cx + r * cosf(a), py = cy + r * sinf(a);
+        float px = qx + r * cosf(a), py = qy + r * sinf(a);
         minX = px < minX ? px : minX; maxX = px > maxX ? px : maxX;
         minY = py < minY ? py : minY; maxY = py > maxY ? py : maxY;
     };
-    grow(rIn, start); grow(rOut, start); grow(rIn, start + span); grow(rOut, start + span);
+    grow(ri, qStart); grow(ro, qStart); grow(ri, qStart + qSpan); grow(ro, qStart + qSpan);
     for (int k = 0; k < 4; k++)
-        if (fmodf(k * 90.0f - start + 720.0f, 360.0f) <= span) grow(rOut, k * 90.0f);
+        if (fmodf(k * 90.0f - qStart + 720.0f, 360.0f) <= qSpan) grow(ro, k * 90.0f);
     setBounds(p, q4(minX), q4(minY), q4(maxX), q4(maxY));
 }
 
