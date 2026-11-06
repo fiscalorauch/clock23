@@ -551,15 +551,36 @@ static void ringBounds(Prim &p) {
     setBounds(&p, p.p[0] - r, p.p[1] - r, p.p[0] + r, p.p[1] + r);
 }
 
-// Only the slice between an arc's old and new end.
-static void markArcSlice(const Scene &s, const Prim &base, int32_t c0, int32_t c1) {
+// Only what an arc's moving edge can change, the other edge staying put. Each edge is
+// a half-plane through the centre, so moving one changes its coverage in the slice
+// between the old and new angle and in the opposite slice too. An arc's coverage
+// combines the two edges, min (<= 180 deg) or max (wider), so a change shows where the
+// fixed edge lets it through. That fixes which of the two slices can show: all of the
+// real one, and of the opposite one the part along the fixed edge, reached when the
+// span is near 180 deg (or, in a pie, around the centre). (fx, fy) is the fixed edge's
+// inward normal in Q12.
+static void markArcSlice(const Prim &base, int32_t c0, int32_t c1, int32_t fx, int32_t fy, bool wide) {
     Prim t = base;
-    t.p[8] = c0;
-    t.p[9] = c1;
-    arcDir(c0, t.p[4], t.p[5]);
-    arcDir(c1, t.p[6], t.p[7]);
     ringBounds(t);
-    markPrim(s, t);
+    if (t.bx0 >= t.bx1) return;
+    int32_t ax, ay, bx, by;
+    arcDir(c0, ax, ay);
+    arcDir(c1, bx, by);
+    const int32_t m = 8 + TILE_REACH, hi = t.p[3] + m, lo = t.p[2] - m;
+    int tx0 = t.bx0 >> 3, tx1 = (t.bx1 + 7) >> 3, ty0 = t.by0 >> 3, ty1 = (t.by1 + 7) >> 3;
+    for (int ty = ty0; ty < ty1; ty++) {
+        uint64_t bits = 0;
+        int32_t dy = (((ty << 3) + 4) << 4) - t.p[1];
+        for (int tx = tx0; tx < tx1; tx++) {
+            int32_t dx = (((tx << 3) + 4) << 4) - t.p[0], d2 = dx * dx + dy * dy;
+            if (d2 > hi * hi || (lo > 0 && d2 < lo * lo)) continue;
+            int32_t f = (fx * dx + fy * dy) >> 12;
+            if (wide ? f > m : f < -m) continue;  // the fixed edge decides here on its own
+            int32_t sa = (ay * dx - ax * dy) >> 12, sb = (by * dx - bx * dy) >> 12;  // inside before c0, c1
+            if ((sa <= m && sb >= -m) || (sa >= -m && sb <= m)) bits |= 1ULL << tx;
+        }
+        gDirty[ty] |= bits;
+    }
 }
 
 // Only the band a ring's edge moved through.
@@ -589,11 +610,11 @@ static void markChanges(const Scene &o, const Scene &n) {
             int32_t sa = a.p[9] - a.p[8], sb = b.p[9] - b.p[8];
             bool sameKind = (sa > 18000) == (sb > 18000) && (sa >= 35999) == (sb >= 35999);
             if (sameKind && a.p[8] == b.p[8]) {
-                markArcSlice(n, a, imin(a.p[9], b.p[9]), imax(a.p[9], b.p[9]));
+                markArcSlice(a, imin(a.p[9], b.p[9]), imax(a.p[9], b.p[9]), -a.p[5], a.p[4], sa > 18000);
                 continue;
             }
             if (sameKind && a.p[9] == b.p[9]) {
-                markArcSlice(n, a, imin(a.p[8], b.p[8]), imax(a.p[8], b.p[8]));
+                markArcSlice(a, imin(a.p[8], b.p[8]), imax(a.p[8], b.p[8]), a.p[7], -a.p[6], sa > 18000);
                 continue;
             }
         }
