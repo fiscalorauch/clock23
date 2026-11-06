@@ -69,4 +69,25 @@ static void setClockEpoch(int64_t epoch) {
     settimeofday(&tv, nullptr);
 }
 
-static void applyBrightness() { ledcWrite(TFT_BL, map(S.brightness, 0, 100, 0, 255)); }
+// ---------------------------------------------------------------------------
+// Backlight
+// ---------------------------------------------------------------------------
+static uint8_t gBacklightPct = 0;
+
+static uint8_t targetBrightness() {
+    if (!timeValid()) return S.brightness;
+    struct tm t;
+    int ms;
+    displayTime(t, ms);
+    return nightActive(t.tm_hour * 60 + t.tm_min) ? S.nightBrightness : S.brightness;
+}
+
+static void applyBrightness() {
+    gBacklightPct = targetBrightness();
+    ledcWrite(TFT_BL, map(gBacklightPct, 0, 100, 0, 255));
+}
+
+// Called about once a second, so night mode starts and ends on time.
+static void brightnessTick() {
+    if (targetBrightness() != gBacklightPct) applyBrightness();
+}

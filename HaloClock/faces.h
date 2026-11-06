@@ -10,6 +10,7 @@
 #pragma once
 #include "faces_common.h"
 #include "face_setup.h"
+#include "face_update.h"
 #if !defined(ONLY_FACE) || defined(ONLY_CLASSIC)
 #include "face_classic.h"
 #endif
@@ -25,8 +26,12 @@
 #if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
 #include "face_schedule.h"
 #endif
+#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+#include "face_weather.h"
+#endif
 
 static const int FACE_SETUP = FACE_COUNT;
+static const int FACE_UPDATE = FACE_COUNT + 1;
 static int gShownFace = -1;
 
 // Forces a full repaint, e.g. after the display was re-initialised.
@@ -44,7 +49,7 @@ static void drawClock() {
     displayTime(ft.local, ft.ms);
     ft.realMs = realNowMs();
 
-    int face = timeValid() ? S.face : FACE_SETUP;
+    int face = gUpdatePct >= 0 ? FACE_UPDATE : timeValid() ? S.face : FACE_SETUP;
     if (face != gShownFace) {
         renderInvalidate();
         gShownFace = face;
@@ -72,6 +77,10 @@ static void drawClock() {
 #if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
         case FACE_SCHEDULE: FACE_LAYERS(schedule); break;
 #endif
+#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+        case FACE_WEATHER: FACE_LAYERS(weather); break;
+#endif
+        case FACE_UPDATE: updateDynamic(s); break;
         default: setupDynamic(s); break;
     }
     frameEnd();

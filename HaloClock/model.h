@@ -2,10 +2,11 @@
 // simulator in tools/sim can build the faces too.
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
-enum FaceId { FACE_CLASSIC, FACE_LEARN, FACE_EXAM, FACE_ZONES, FACE_FOCUS, FACE_SCHEDULE, FACE_COUNT };
-static const char *kFaceIds[FACE_COUNT] = {"classic", "learn", "exam", "zones", "focus", "schedule"};
+enum FaceId { FACE_CLASSIC, FACE_LEARN, FACE_EXAM, FACE_ZONES, FACE_FOCUS, FACE_SCHEDULE, FACE_WEATHER, FACE_COUNT };
+static const char *kFaceIds[FACE_COUNT] = {"classic", "learn", "exam", "zones", "focus", "schedule", "weather"};
 
 struct City { const char *label; const char *posix; };
 static const City kCities[] = {
@@ -47,16 +48,21 @@ struct Settings {
     int32_t testOffset;  // seconds added to the displayed time ("Custom" mode), 0 = real time
     uint8_t numPeriods;
     Period periods[MAX_PERIODS];
+    float lat, lon;      // weather location; general area only
+    char place[32];
+    uint8_t nightOn;     // dim the backlight between nightStart and nightEnd
+    uint8_t nightBrightness;  // 1..100 %
+    uint16_t nightStart, nightEnd;  // minutes after midnight
 };
 
-static const uint16_t kSettingsVersion = 1;
+static const uint16_t kSettingsVersion = 2;
 Settings S;
 uint32_t gSettingsRev = 0;  // bumped on every settings change so faces rebuild their static layers
 
 static void defaultSettings() {
     memset(&S, 0, sizeof(S));
     S.version = kSettingsVersion;
-    S.face = FACE_CLASSIC;
+    S.face = FACE_WEATHER;
     S.brightness = 80;
     S.homeCity = kMelbourne;
     S.zones[0] = 3;  // New York
@@ -72,6 +78,57 @@ static void defaultSettings() {
     };
     S.numPeriods = sizeof(defaults) / sizeof(defaults[0]);
     memcpy(S.periods, defaults, sizeof(defaults));
+    S.lat = -37.81f;
+    S.lon = 144.96f;
+    strlcpy(S.place, "Melbourne", sizeof(S.place));
+    S.nightOn = 1;
+    S.nightBrightness = 5;
+    S.nightStart = 21 * 60 + 30;
+    S.nightEnd = 7 * 60;
+}
+
+// True while the backlight should be at its night level. The window may cross midnight.
+static bool nightActive(int minuteOfDay) {
+    if (!S.nightOn || S.nightStart == S.nightEnd) return false;
+    if (S.nightStart < S.nightEnd) return minuteOfDay >= S.nightStart && minuteOfDay < S.nightEnd;
+    return minuteOfDay >= S.nightStart || minuteOfDay < S.nightEnd;
+}
+
+// ---- Live weather ----------------------------------------------------------
+// Kept in RAM only. The network task fills a spare copy and then swaps the
+// pointer, so a face never sees half an update.
+#define WX_HOURS 12
+
+struct WeatherData {
+    int64_t fetchedAt;   // epoch seconds of the last good fetch, 0 = nothing yet
+    int64_t hourStart;   // epoch seconds of rain[0]
+    float tempC, feelsC;
+    float highC[2], lowC[2];  // today, tomorrow
+    int16_t code;        // WMO weather code
+    uint8_t isDay;
+    uint8_t rain[WX_HOURS];   // chance of rain per hour, %
+};
+
+static WeatherData gWxSlots[2];
+static WeatherData *volatile gWx = &gWxSlots[0];
+
+static void publishWeather(const WeatherData &w) {
+    WeatherData *spare = gWx == &gWxSlots[0] ? &gWxSlots[1] : &gWxSlots[0];
+    *spare = w;
+    gWx = spare;
+}
+
+// ---- Self-update -----------------------------------------------------------
+static volatile int8_t gUpdatePct = -1;  // -1 = no update running, else 0..100
+
+// True if version a is newer than b. Accepts "1.3.0" or "v1.3.0".
+static bool versionNewer(const char *a, const char *b) {
+    int x[3] = {0, 0, 0}, y[3] = {0, 0, 0};
+    sscanf(a + (*a == 'v' || *a == 'V'), "%d.%d.%d", &x[0], &x[1], &x[2]);
+    sscanf(b + (*b == 'v' || *b == 'V'), "%d.%d.%d", &y[0], &y[1], &y[2]);
+    for (int i = 0; i < 3; i++)
+        if (x[i] != y[i]) return x[i] > y[i];
+    return false;
 }
 
 struct NetInfo { bool ap; char ip[16]; char ssid[33]; };

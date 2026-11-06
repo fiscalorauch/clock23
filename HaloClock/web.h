@@ -25,10 +25,30 @@ static long timerLeft(int64_t end) {
     return max<long>(0, (long)(end - realNow()));
 }
 
+// Current weather, in /api/state and /api/weather (handy for Home Assistant).
+static void wxJson(String &o) {
+    const WeatherData &w = *gWx;
+    bool have = w.fetchedAt != 0;
+    o += "{\"have\":"; o += have ? "true" : "false";
+    if (have) {
+        o += ",\"temp\":"; o += String(w.tempC, 1);
+        o += ",\"feels\":"; o += String(w.feelsC, 1);
+        o += ",\"code\":"; o += w.code;
+        o += ",\"word\":"; jsonStr(o, wxWord(w.code, w.isDay));
+        o += ",\"high\":"; o += String(w.highC[0], 1);
+        o += ",\"low\":"; o += String(w.lowC[0], 1);
+        o += ",\"age\":"; o += (long)(realNow() - w.fetchedAt);
+        o += ",\"rain\":[";
+        for (int i = 0; i < WX_HOURS; i++) { if (i) o += ','; o += w.rain[i]; }
+        o += ']';
+    }
+    o += '}';
+}
+
 static void sendState() {
     A.requests++;
     String o;
-    o.reserve(2200);
+    o.reserve(2800);
     o += "{\"face\":\""; o += kFaceIds[S.face]; o += '"';
     o += ",\"firmware\":\"" FIRMWARE_VERSION "\"";
     o += ",\"deviceName\":"; jsonStr(o, gDeviceName);
@@ -42,6 +62,19 @@ static void sendState() {
     o += ",\"focusMin\":"; o += S.focusMin;
     o += ",\"focusLeft\":"; o += timerLeft(S.focusEnd);
     o += ",\"testOffset\":"; o += S.testOffset;
+    o += ",\"lat\":"; o += String(S.lat, 3);
+    o += ",\"lon\":"; o += String(S.lon, 3);
+    o += ",\"place\":"; jsonStr(o, S.place);
+    o += ",\"nightOn\":"; o += S.nightOn ? "true" : "false";
+    o += ",\"nightBrightness\":"; o += S.nightBrightness;
+    o += ",\"nightStart\":"; o += S.nightStart;
+    o += ",\"nightEnd\":"; o += S.nightEnd;
+    o += ",\"backlight\":"; o += gBacklightPct;
+    o += ",\"wx\":"; wxJson(o);
+    o += ",\"update\":{\"state\":\""; o += kUpdateStates[gUpState]; o += '"';
+    o += ",\"latest\":"; jsonStr(o, gUpLatest);
+    o += ",\"pct\":"; o += (int)gUpdatePct;
+    o += ",\"error\":"; jsonStr(o, gUpError); o += '}';
     o += ",\"schedule\":[";
     for (int i = 0; i < S.numPeriods; i++) {
         if (i) o += ',';
@@ -126,6 +159,16 @@ static void handleSet() {
     if (server.hasArg("focusMin")) S.focusMin = constrain(server.arg("focusMin").toInt(), 1, 180);
     if (server.hasArg("testOffset")) S.testOffset = constrain(server.arg("testOffset").toInt(), -604800L, 604800L);
     if (server.hasArg("schedule")) parseSchedule(server.arg("schedule"));
+    if (server.hasArg("lat") && server.hasArg("lon")) {
+        S.lat = constrain(server.arg("lat").toFloat(), -90.0f, 90.0f);
+        S.lon = constrain(server.arg("lon").toFloat(), -180.0f, 180.0f);
+        gWxRefresh = true;
+    }
+    if (server.hasArg("place")) copyArg("place", S.place, sizeof(S.place));
+    if (server.hasArg("nightOn")) S.nightOn = server.arg("nightOn").toInt() ? 1 : 0;
+    if (server.hasArg("nightBrightness")) S.nightBrightness = constrain(server.arg("nightBrightness").toInt(), 1, 100);
+    if (server.hasArg("nightStart")) S.nightStart = constrain(server.arg("nightStart").toInt(), 0, 1439);
+    if (server.hasArg("nightEnd")) S.nightEnd = constrain(server.arg("nightEnd").toInt(), 0, 1439);
     if (server.hasArg("deviceName")) {
         char name[32];
         copyArg("deviceName", name, sizeof(name));
@@ -143,6 +186,25 @@ static void handleAction() {
     else if (a == "focusStart") { S.focusEnd = realNow() + S.focusMin * 60L; S.face = FACE_FOCUS; analyticsFocusStarted(); }
     else if (a == "focusStop") S.focusEnd = 0;
     saveSettings();
+    sendState();
+}
+
+// GET /api/weather — just the weather. POST also asks for a fresh fetch.
+static void handleWeather() {
+    if (server.method() == HTTP_POST) gWxRefresh = true;
+    String o;
+    o.reserve(300);
+    wxJson(o);
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(200, "application/json", o);
+}
+
+// POST /api/update?a=check|install — installs only the newest release of this project.
+static void handleUpdate() {
+    String a = server.arg("a");
+    bool busy = gUpState == UP_CHECKING || gUpState == UP_INSTALLING || gUpState == UP_DONE;
+    if (!busy && a == "check") gUpCheckReq = true;
+    else if (!busy && a == "install") gUpInstallReq = true;
     sendState();
 }
 
@@ -249,6 +311,8 @@ static void webBegin() {
     server.on("/api/time", HTTP_POST, handleTime);
     server.on("/api/wifi", HTTP_POST, handleWifi);
     server.on("/api/info", HTTP_GET, handleInfo);
+    server.on("/api/weather", HTTP_ANY, handleWeather);
+    server.on("/api/update", HTTP_POST, handleUpdate);
     server.onNotFound([] {
         server.sendHeader("Location", "/");
         server.send(302, "text/plain", "");

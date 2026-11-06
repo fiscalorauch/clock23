@@ -55,19 +55,21 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
   <div class="faces" id="faces"></div>
   <div id="faceCard"></div>
   <div class="card" id="displayCard"></div>
+  <div class="card" id="updateCard"></div>
   <div class="card" id="wifiCard"></div>
   <div class="card" id="timeCard"></div>
   <footer id="net"></footer>
+  <footer><a href="https://open-meteo.com/" style="color:inherit">Weather data by Open-Meteo.com</a> (CC BY 4.0)</footer>
 </div>
 <script>
 (() => {
-  const FACES = [['classic','Classic'], ['learn','Learn'], ['exam','Exam'], ['zones','Zones'], ['focus','Focus'], ['schedule','Schedule']];
+  const FACES = [['weather','Weather'], ['classic','Classic'], ['zones','Zones'], ['learn','Learn'], ['exam','Exam'], ['focus','Focus'], ['schedule','Schedule']];
   const PASTELS = ['#a8d8ea', '#cdb9f0', '#ffe8a3', '#a8e6cf', '#ffd3b6', '#ffaaa5'];
   // Same order as kCities in settings.h.
   const TZ = ['Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo', 'Asia/Shanghai',
               'Asia/Singapore', 'Asia/Dubai', 'Asia/Kolkata', 'Australia/Sydney', 'Australia/Melbourne', 'Pacific/Auckland', 'Pacific/Honolulu'];
 
-  let st = null, polledAt = 0, online = false;
+  let st = null, polledAt = 0, online = false, updateKey = '';
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
   const m2t = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -117,6 +119,9 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
     polledAt = Date.now();
     if (first || faceChanged || rerender) { renderFaces(); renderFaceCard(); }
     if (first) { renderDisplay(); renderWifi(); renderTime(); }
+    const u = JSON.stringify(s.update);
+    if (u !== updateKey) { updateKey = u; renderUpdate(); }
+    if ($('wxNow')) $('wxNow').textContent = wxSummary();
     renderStatus();
     tick();
   }
@@ -200,10 +205,67 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
         ]));
       });
       card.append(h('div', { class: 'note', text: 'White hands show local time; each coloured hand shows a city.' }));
+    } else if (f === 'weather') {
+      weatherCard(card);
     } else {
       scheduleCard(card);
     }
     tick();
+  }
+
+  function wxSummary() {
+    const w = st.wx;
+    if (!w.have) return st.ap ? 'No internet on the clock hotspot.' : 'Waiting for the first weather update\u2026';
+    const mins = Math.round(w.age / 60);
+    return `${Math.round(w.temp)}\u00b0 \u00b7 ${w.word} \u00b7 updated ${mins < 1 ? 'just now' : mins + ' min ago'}`;
+  }
+
+  // Suburb search runs in this browser, so the clock never handles it.
+  function weatherCard(card) {
+    const q = h('input', { type: 'text', placeholder: 'Suburb or town', autocapitalize: 'words' });
+    const results = h('div', { style: 'margin-top:8px' });
+    const find = async () => {
+      results.textContent = 'Searching\u2026';
+      try {
+        const u = 'https://geocoding-api.open-meteo.com/v1/search?count=8&language=en&format=json&countryCode=AU&name=' + encodeURIComponent(q.value.trim());
+        const d = await (await fetch(u)).json();
+        results.textContent = d.results ? '' : 'No matches.';
+        (d.results || []).forEach(r => results.append(h('button', {
+          class: 'btn ghost', style: 'width:100%;margin-bottom:6px;text-align:left',
+          text: [r.name, r.admin1].filter(Boolean).join(', '),
+          onclick: async () => {
+            await set({ lat: r.latitude.toFixed(3), lon: r.longitude.toFixed(3), place: r.name });
+          },
+        })));
+      } catch (e) { results.textContent = 'Search needs this device to be online.'; }
+    };
+    card.append(h('h2', { text: 'Weather' }),
+      h('div', { class: 'note', id: 'wxNow', style: 'margin-bottom:12px', text: wxSummary() }),
+      h('div', { class: 'field' }, [
+        h('label', { text: `Location: ${st.place}` }),
+        h('div', { class: 'row' }, [q, h('button', { class: 'btn', text: 'Find', style: 'flex:0 0 auto', onclick: find })]),
+      ]), results,
+      h('button', { class: 'btn ghost', style: 'width:100%', text: 'Refresh now', onclick: () => fetch('/api/weather', { method: 'POST' }) }),
+      h('div', { class: 'note', style: 'margin-top:10px', text: 'The rim shows the next 12 hours of rain chance. A thicker, brighter bar means rain is more likely.' }));
+  }
+
+  function renderUpdate() {
+    const card = $('updateCard'), u = st.update;
+    card.innerHTML = '';
+    const go = a => call('/api/update', { a }, { rerender: false });
+    const line = {
+      idle: 'Check GitHub for a newer version.',
+      checking: 'Checking\u2026',
+      current: 'This clock is up to date.',
+      available: `Version ${u.latest.replace(/^v/, '')} is ready to install.`,
+      installing: `Installing\u2026 ${Math.max(0, u.pct)}%. Keep the clock plugged in.`,
+      done: 'Installed. The clock is restarting.',
+      failed: `Update didn't finish: ${u.error}. The clock is still running this version.`,
+    }[u.state];
+    card.append(h('h2', { text: 'Firmware' }),
+      h('div', { class: 'note', style: 'margin-bottom:12px', text: `Version ${st.firmware}. ${line}` }));
+    if (u.state === 'available') card.append(h('button', { class: 'btn', style: 'width:100%', text: 'Update now', onclick: () => go('install') }));
+    else if (!['checking', 'installing', 'done'].includes(u.state)) card.append(h('button', { class: 'btn ghost', style: 'width:100%', text: 'Check for updates', onclick: () => go('check') }));
   }
 
   function scheduleCard(card) {
@@ -250,9 +312,25 @@ static const char DASHBOARD_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
     } });
     const home = h('select', { onchange: e => set({ home: e.target.value }, false) },
       st.cities.map((name, i) => h('option', { value: i, selected: i === st.home }, name)));
+    const nightVal = h('span', { text: `${st.nightBrightness}%` });
+    const nightRange = h('input', { type: 'range', min: 1, max: 50, value: st.nightBrightness, oninput: e => {
+      nightVal.textContent = `${e.target.value}%`;
+      debounce(() => set({ nightBrightness: e.target.value }, false), 150);
+    } });
+    const toggle = async on => { await set({ nightOn: on }, false); renderDisplay(); };
     card.append(h('h2', { text: 'Display' }),
       h('div', { class: 'field' }, [h('label', {}, ['Brightness', val]), range]),
-      h('div', { class: 'field' }, [h('label', { text: 'Clock location (time zone)' }), home]));
+      h('div', { class: 'field' }, [h('label', { text: 'Clock location (time zone)' }), home]),
+      h('div', { class: 'field' }, [h('label', { text: 'Night dimming' }), h('div', { class: 'seg' }, [
+        h('div', { class: st.nightOn ? 'on' : '', text: 'On', onclick: () => toggle(1) }),
+        h('div', { class: st.nightOn ? '' : 'on', text: 'Off', onclick: () => toggle(0) }),
+      ])]));
+    if (st.nightOn) card.append(
+      h('div', { class: 'row field' }, [
+        h('div', {}, [h('label', { text: 'From' }), h('input', { type: 'time', value: m2t(st.nightStart), onchange: e => set({ nightStart: t2m(e.target.value) }, false) })]),
+        h('div', {}, [h('label', { text: 'Until' }), h('input', { type: 'time', value: m2t(st.nightEnd), onchange: e => set({ nightEnd: t2m(e.target.value) }, false) })]),
+      ]),
+      h('div', { class: 'field' }, [h('label', {}, ['Night brightness', nightVal]), nightRange]));
   }
 
   // Which network the clock joins. Passwords are write-only: the clock never sends them back.

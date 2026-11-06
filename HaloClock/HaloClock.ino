@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// Halo — Smart Classroom Clock
+// Halo — home weather clock (started as a smart classroom clock)
 // 2.1" 360x360 GC9B72 round TFT + Waveshare ESP32-C3 Zero, controlled from a
 // Wi-Fi dashboard on any phone or laptop.
 //
-// Board: ESP32C3 Dev Module, USB CDC On Boot: Enabled, Partition Scheme: Huge APP
+// Board: ESP32C3 Dev Module, USB CDC On Boot: Enabled, Partition Scheme: Minimal SPIFFS
 // Libraries: GFX Library for Arduino, Arduino_GC9B72
 //
 // Wi-Fi: put your network in WIFI_SSID / WIFI_PASS. If they're blank or the
@@ -20,8 +20,9 @@
 #include <ESPmDNS.h>
 #include <Arduino_GFX_Library.h>
 #include <Arduino_GC9B72.h>
+#include <esp_ota_ops.h>
 
-#define FIRMWARE_VERSION "1.2.0"
+#define FIRMWARE_VERSION "1.3.0"
 
 // ---- Wi-Fi -----------------------------------------------------------------
 #if __has_include("secrets.h")
@@ -62,6 +63,7 @@ static void sinkEnd() { tft->endWrite(); }
 #include "wifi_config.h"
 #include "faces.h"
 #include "analytics.h"
+#include "net.h"
 #include "web.h"
 
 static void startWifi() {
@@ -98,6 +100,29 @@ void setup() {
 
     startWifi();
     webBegin();
+    netBegin();
+}
+
+// After a self-update the new firmware runs on trial. It's kept once it has run
+// for a while and joined Wi-Fi. Otherwise the restart hands control back to the
+// previous firmware, as does any crash before this point.
+extern "C" bool verifyRollbackLater() { return true; }
+
+static void confirmFirmware() {
+    static bool settled = false;
+    if (settled) return;
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) != ESP_OK ||
+        state != ESP_OTA_IMG_PENDING_VERIFY) {
+        settled = true;
+    } else if (millis() > 20000 && WiFi.status() == WL_CONNECTED) {
+        esp_ota_mark_app_valid_cancel_rollback();
+        settled = true;
+        Serial.println("New firmware confirmed");
+    } else if (millis() > 180000) {
+        Serial.println("New firmware never got online; going back");
+        ESP.restart();
+    }
 }
 
 void loop() {
@@ -112,6 +137,13 @@ void loop() {
     }
     uint32_t gap = lastFrame ? now - lastFrame : 0;
     lastFrame = now;
+
+    static unsigned long lastSlow = 0;
+    if (now - lastSlow >= 1000) {
+        lastSlow = now;
+        brightnessTick();
+        confirmFirmware();
+    }
 
     unsigned long t0 = micros();
     drawClock();

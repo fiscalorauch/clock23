@@ -45,6 +45,8 @@ static void wifiLoad() {
     if (wifiPrefs.getBytesLength("cfg") != sizeof(W) || wifiPrefs.getBytes("cfg", &W, sizeof(W)) != sizeof(W) ||
         W.version != kWifiVersion) {
         wifiDefaults();
+        // Keep the sketch's network in flash: builds from GitHub don't contain one.
+        if (strlen(W.ssid)) wifiPrefs.putBytes("cfg", &W, sizeof(W));
     }
 }
 

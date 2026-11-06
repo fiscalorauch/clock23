@@ -109,6 +109,8 @@ static int64_t parseLocal(const char *s) {
 static bool runScenario(const Scenario &sc) {
     defaultSettings();
     S.face = sc.face;
+    publishWeather(WeatherData{});
+    gUpdatePct = -1;
     applyHomeZone();
     int64_t start = parseLocal(sc.start);
     if (sc.setup) sc.setup(start);
@@ -181,6 +183,9 @@ static bool runScenario(const Scenario &sc) {
 #if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
 #include "scenarios_schedule.h"
 #endif
+#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+#include "scenarios_weather.h"
+#endif
 
 int main(int argc, char **argv) {
     mkdir(kOutDir, 0755);
@@ -201,9 +206,15 @@ int main(int argc, char **argv) {
 #if !defined(ONLY_FACE) || defined(ONLY_SCHEDULE)
     addScheduleScenarios(all);
 #endif
+#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+    addWeatherScenarios(all);
+#endif
 
     const char *only = argc > 1 ? argv[1] : nullptr;
     int failed = 0, ran = 0;
+#if !defined(ONLY_FACE) || defined(ONLY_WEATHER)
+    if (!only) failed += weatherParserTests() ? 1 : 0;
+#endif
     for (const Scenario &sc : all) {
         if (only && !strstr(sc.name, only)) continue;
         ran++;
