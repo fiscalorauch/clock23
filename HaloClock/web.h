@@ -65,6 +65,7 @@ static void sendState() {
         bool alarmOn = now < gHa.alarmUntil, noticeOn = now < gHa.noticeUntil && gHa.notice[0];
         o += ",\"ha\":{\"alarm\":\""; o += kHaAlarmNames[alarmOn ? gHa.alarm : HA_NONE]; o += '"';
         o += ",\"alarmFor\":"; o += alarmOn ? (long)(gHa.alarmUntil - now) : 0L;
+        o += ",\"countdown\":"; o += haCountdownLeft(realNowMs());
         o += ",\"notice\":"; jsonStr(o, noticeOn ? gHa.notice : "");
         o += ",\"noticeFor\":"; o += noticeOn ? (long)(gHa.noticeUntil - now) : 0L;
         o += '}';
@@ -150,7 +151,8 @@ static void handleUpdate() {
     sendState();
 }
 
-// POST /api/ha — status from Home Assistant: alarm=<alarm panel state> and/or
+// POST /api/ha — status from Home Assistant: alarm=<alarm panel state>, optionally
+// with countdown=<exit delay seconds left>&total=<its full length>, and/or
 // notice=<short text> (empty clears it). Each lasts ttl seconds (default 15 min),
 // so Home Assistant resends them; if it stops, the face clears itself.
 static void handleHa() {
@@ -159,6 +161,10 @@ static void handleHa() {
     if (server.hasArg("alarm")) {
         gHa.alarm = haAlarmFromState(server.arg("alarm").c_str());
         gHa.alarmUntil = now + ttl;
+        // Sent with every state, so a stale countdown can't outlive the arming it belonged to.
+        long countdown = server.arg("countdown").toInt();
+        gHa.countdownUntil = countdown > 0 ? now + countdown : 0;
+        gHa.countdownTotal = constrain(server.arg("total").toInt(), 0L, 600L);
     }
     if (server.hasArg("notice")) {
         copyArg("notice", gHa.notice, sizeof(gHa.notice));

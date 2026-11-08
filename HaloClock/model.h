@@ -119,6 +119,8 @@ struct HaStatus {
     int64_t alarmUntil;   // epoch seconds
     char notice[48];
     int64_t noticeUntil;
+    int64_t countdownUntil;   // epoch seconds when the exit delay should end, 0 = none
+    uint16_t countdownTotal;  // its full length in seconds
 };
 static HaStatus gHa = {};
 
@@ -133,6 +135,12 @@ static uint8_t haAlarmFromState(const char *s) {
     if (!strcmp(s, "pending")) return HA_PENDING;
     if (!strcmp(s, "triggered")) return HA_TRIGGERED;
     return HA_NONE;  // unknown, unavailable, disarming
+}
+
+// Whole seconds left on the exit delay, rounded up. 0 when there isn't one.
+static int haCountdownLeft(int64_t nowMs) {
+    int64_t left = gHa.countdownUntil * 1000 - nowMs;
+    return left > 0 ? (int)((left + 999) / 1000) : 0;
 }
 
 // The alarm state to show right now, or HA_NONE once Home Assistant's last report expired.

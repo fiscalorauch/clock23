@@ -64,6 +64,24 @@ static void alarmNight(int64_t t) { wxMoon(t); haSet(t, HA_ARMED_NIGHT, 900); }
 static void alarmAway(int64_t t) { wxSun(t); haSet(t, HA_ARMED_AWAY, 900); }
 static void alarmHome(int64_t t) { wxRain(t); haSet(t, HA_ARMED_HOME, 900); }
 static void alarmArming(int64_t t) { wxPartly(t); haSet(t, HA_ARMING, 900); }
+static void alarmCountdown(int64_t t) {
+    wxPartly(t);
+    haSet(t, HA_ARMING, 900);
+    gHa.countdownUntil = t / 1000 + 48; gHa.countdownTotal = 48;
+}
+// The delay runs out while the panel is still arming, then it reports armed.
+static void alarmCountdownEnd(int64_t now, int64_t start) {
+    if (now - start == 0) {
+        wxPartly(start);
+        haSet(now, HA_ARMING, 900);
+        gHa.countdownUntil = now / 1000 + 3; gHa.countdownTotal = 48;
+    }
+    if (now - start == 5000) { haSet(now, HA_ARMED_AWAY, 900); gHa.countdownUntil = 0; }
+}
+static void alarmCountdownMid(int64_t t) {
+    alarmCountdown(t);
+    gHa.countdownUntil = t / 1000 + 31;
+}
 static void alarmPending(int64_t t) { wxPartly(t); haSet(t, HA_PENDING, 900); }
 static void alarmTriggered(int64_t t) {
     wxStorm(t);
@@ -118,6 +136,9 @@ static void addWeatherScenarios(std::vector<Scenario> &v) {
     v.push_back({"alarm_away", "2026-12-20 13:30:00", 2, 100, alarmAway, nullptr});
     v.push_back({"alarm_home", "2026-09-15 18:45:00", 2, 100, alarmHome, nullptr});
     v.push_back({"alarm_arming", "2026-09-15 08:02:00", 2, 100, alarmArming, nullptr});
+    v.push_back({"alarm_countdown", "2026-09-15 08:02:00", 50, 33, alarmCountdown, nullptr});
+    v.push_back({"alarm_countdown_mid", "2026-09-15 08:02:00", 1, 100, alarmCountdownMid, nullptr});
+    v.push_back({"alarm_countdown_end", "2026-09-15 08:02:00", 8, 100, nullptr, alarmCountdownEnd});
     v.push_back({"alarm_pending", "2026-09-15 17:31:00", 2, 100, alarmPending, nullptr});
     v.push_back({"alarm_triggered", "2026-09-15 02:31:00", 2, 100, alarmTriggered, nullptr});
     v.push_back({"alarm_no_weather", "2026-09-15 09:15:00", 2, 100, alarmNoWeather, nullptr});
@@ -164,6 +185,9 @@ static int weatherParserTests() {
           haAlarmFromState("armed_home") == HA_ARMED_HOME && haAlarmFromState("armed_vacation") == HA_ARMED_OTHER, "alarm armed");
     gHa.alarm = HA_ARMED_AWAY; gHa.alarmUntil = 100;
     check(haAlarmAt(99) == HA_ARMED_AWAY && haAlarmAt(100) == HA_NONE, "alarm expiry");
+    gHa.countdownUntil = 100;
+    check(haCountdownLeft(99001) == 1 && haCountdownLeft(99999) == 1 && haCountdownLeft(98000) == 2, "countdown rounds up");
+    check(haCountdownLeft(100000) == 0 && haCountdownLeft(120000) == 0, "countdown finished");
     memset(&gHa, 0, sizeof(gHa));
     check(haAlarmFromState("disarmed") == HA_DISARMED && haAlarmFromState("triggered") == HA_TRIGGERED, "alarm states");
     check(haAlarmFromState("pending") == HA_PENDING && haAlarmFromState("arming") == HA_ARMING, "alarm delays");

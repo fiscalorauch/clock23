@@ -16,6 +16,8 @@ static void alarmDynamic(Scene &s, const FrameTime &ft) {
     uint16_t ink = loud ? C_BLACK : C_TEXT;
     uint16_t accent = loud ? C_BLACK : a == HA_ARMING ? C_PEACH : C_MINT;
     uint16_t soft = loud ? C_BLACK : C_DIM;
+    int left = a == HA_ARMING ? haCountdownLeft(ft.realMs) : 0;
+    bool counting = left > 0;
 
     const char *label = a == HA_TRIGGERED ? "ALARM"
                         : a == HA_PENDING ? "ENTRY DELAY"
@@ -24,16 +26,25 @@ static void alarmDynamic(Scene &s, const FrameTime &ft) {
                         : a == HA_ARMED_AWAY ? "ARMED \u00b7 AWAY"
                         : a == HA_ARMED_NIGHT ? "ARMED \u00b7 NIGHT"
                                               : "ARMED";
-    addRing(s, SCR_C, SCR_C, 164, 170, accent, loud ? 255 : 110);
+    addRing(s, SCR_C, SCR_C, 164, 170, accent, loud ? 255 : counting ? 45 : 110);
+    // While counting down, the ring empties clockwise towards 12 o'clock.
+    float total = gHa.countdownTotal > 0 ? gHa.countdownTotal : 1.0f;
+    float frac = counting ? (float)(gHa.countdownUntil * 1000 - ft.realMs) / (total * 1000.0f) : 0;
+    addRoundArc(s, 167, 6, 0, snapDeg((frac > 1 ? 1 : frac) * 360.0f, 1.0f), accent, counting ? 255 : 0);
     addText(s, label, SCR_C, 64, F16, accent, ALIGN_CENTER, 3);
 
-    // Lock: shackle, body, keyhole.
-    addArc(s, SCR_C, 106, 13, 19, 250, 470, accent);
-    addRRect(s, SCR_C, 134, 54, 40, 8, accent);
-    addCircle(s, SCR_C, 130, 5, bg);
-    addRRect(s, SCR_C, 139, 4, 12, 2, bg);
+    // Lock: shackle, body, keyhole. The exit delay countdown takes its place.
+    uint8_t lockAlpha = counting ? 0 : 255;
+    addArc(s, SCR_C, 106, 13, 19, 250, 470, accent, lockAlpha);
+    addRRect(s, SCR_C, 134, 54, 40, 8, accent, lockAlpha);
+    addCircle(s, SCR_C, 130, 5, bg, lockAlpha);
+    addRRect(s, SCR_C, 139, 4, 12, 2, bg, lockAlpha);
 
     char b[56];
+    if (counting) snprintf(b, sizeof(b), "%d", left);
+    else b[0] = 0;
+    addText(s, b, SCR_C, 124, D70, accent, ALIGN_CENTER, 0, counting ? 255 : 0);
+
     fmtClock(b, sizeof(b), ft.local);
     addText(s, b, SCR_C, 207, D70, ink);
 

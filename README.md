@@ -48,13 +48,13 @@ POST bodies are form-encoded.
 | `POST /api/weather` | Fetch new weather now |
 | `POST /api/set` | Change settings: `brightness`, `home`, `lat` with `lon`, `place`, `nightOn`, `nightStart`, `nightEnd`, `nightBrightness`, `testOffset`, `deviceName` |
 | `POST /api/update` | `a=check` or `a=install` |
-| `POST /api/ha` | From Home Assistant: `alarm` (an alarm panel state such as `armed_away` or `triggered`) and/or `notice` (short text, empty to clear), each shown for `ttl` seconds, 900 by default |
+| `POST /api/ha` | From Home Assistant: `alarm` (an alarm panel state such as `armed_away` or `triggered`) and/or `notice` (short text, empty to clear), each shown for `ttl` seconds, 900 by default. With `alarm=arming`, `countdown` (seconds left) and `total` (full length) show the exit delay |
 | `GET /api/info` | Diagnostics |
 
 ## Home Assistant
 
 Home Assistant reaches the clock at `http://halo.local`; its HTTP client resolves `.local` names itself, so the clock's DHCP address can change freely. The package lives in the Home Assistant project (`ha/packages/halo_clock.yaml`). It polls `/api/state`, offers brightness, night dimming, weather refresh and update controls, and sends the alarm state every 5 minutes and on every change.
 
-While the alarm is armed the clock shows the **Alarm face** instead of Weather: the mode (Away, Home or Night), a lock, the time and a one-line forecast. Arming shows in peach. Entry delay turns the whole screen peach and triggered turns it coral, both at full brightness even during night dimming. Disarming returns to the Weather face. A notice from Home Assistant replaces the bottom line on either face. Everything from Home Assistant expires on its own, so if Home Assistant stops, the clock returns to Weather within 15 minutes.
+While the alarm is armed the clock shows the **Alarm face** instead of Weather: the mode (Away, Home or Night), a lock, the time and a one-line forecast. Arming shows in peach, with the exit delay counting down in place of the lock and the rim emptying as it runs. Entry delay turns the whole screen peach and triggered turns it coral, both at full brightness even during night dimming. Disarming returns to the Weather face. A notice from Home Assistant replaces the bottom line on either face. Everything from Home Assistant expires on its own, so if Home Assistant stops, the clock returns to Weather within 15 minutes.
 
 The API has no login. Keep it on a trusted home network and don't expose it to the internet.
