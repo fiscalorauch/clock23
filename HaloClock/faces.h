@@ -1,5 +1,5 @@
-// Chooses the screen and builds one scene per frame: Weather normally, the
-// setup screen until the clock knows the time, the update screen during an
+// Chooses the screen and builds one scene per frame: Weather normally, Alarm
+// while Home Assistant reports the alarm armed, the setup screen until the clock knows the time, the update screen during an
 // update. The renderer sends only what changed.
 //
 // The includer must define, before including this file:
@@ -13,6 +13,7 @@
 #include "face_setup.h"
 #include "face_update.h"
 #include "face_weather.h"
+#include "face_alarm.h"
 
 static const int FACE_SETUP = FACE_COUNT;
 static const int FACE_UPDATE = FACE_COUNT + 1;
@@ -33,15 +34,20 @@ static void drawClock() {
     displayTime(ft.local, ft.ms);
     ft.realMs = realNowMs();
 
-    int face = gUpdatePct >= 0 ? FACE_UPDATE : timeValid() ? FACE_WEATHER : FACE_SETUP;
+    uint8_t alarm = haAlarmAt(ft.realMs / 1000);
+    int face = gUpdatePct >= 0 ? FACE_UPDATE
+             : !timeValid() ? FACE_SETUP
+             : alarm >= HA_ARMED_HOME ? FACE_ALARM
+                                      : FACE_WEATHER;
     if (face != gShownFace) {
         renderInvalidate();
         gShownFace = face;
     }
     bool needStatic;
-    Scene &s = frameBegin(C_BLACK, (uint32_t)face | gSettingsRev << 4, needStatic);
+    Scene &s = frameBegin(face == FACE_ALARM ? alarmBg(alarm) : C_BLACK, (uint32_t)face | gSettingsRev << 4, needStatic);
     switch (face) {
         case FACE_WEATHER: FACE_LAYERS(weather); break;
+        case FACE_ALARM: FACE_LAYERS(alarm); break;
         case FACE_UPDATE: updateDynamic(s); break;
         default: setupDynamic(s); break;
     }

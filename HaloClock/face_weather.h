@@ -10,6 +10,20 @@ static const uint16_t WX_BLUE_DIM = HEX565(0x46698a);
 static const uint16_t WX_SUN = HEX565(0xffe8a3);
 static const float WX_RIM_IN = 162.0f;
 
+// Copies the Home Assistant notice into b, trimmed to a whole word that fits
+// the bottom of the round screen.
+static void fitNotice(char *b, size_t n) {
+    strlcpy(b, gHa.notice, n);
+    size_t full = strlen(b);
+    for (size_t len = full; len > 0 && textWidth(b, F13) > 166; len--) b[len - 1] = 0;
+    char *space = strrchr(b, ' ');
+    if (strlen(b) < full && space && space - b > (long)strlen(b) / 2) *space = 0;
+}
+
+static void fmtClock(char *b, size_t n, const struct tm &t) {
+    snprintf(b, n, "%d:%02d", (t.tm_hour % 12) ? t.tm_hour % 12 : 12, t.tm_min);
+}
+
 static void weatherStatic(Scene &s) {
     for (int i = 0; i < 12; i++) addArc(s, SCR_C, SCR_C, WX_RIM_IN, WX_RIM_IN + 3, i * 30 + 1.5f, i * 30 + 28.5f, C_TRACK);
 }
@@ -32,16 +46,6 @@ static void wxRainRim(Scene &s, const FrameTime &ft, const WeatherData &w, bool 
     float hourPos = (ft.local.tm_hour % 12) + ft.local.tm_min / 60.0f;
     polarPt(153, snapDeg(hourPos * 30.0f, 1.0f), x, y);
     addCircle(s, x, y, 3.5f, C_PEACH);
-}
-
-// A lock above the date while the alarm is armed, arming, in entry delay or
-// triggered. Nothing shows while it's disarmed or Home Assistant is silent.
-static void wxLock(Scene &s, uint8_t alarm) {
-    bool show = alarm >= HA_ARMED;
-    uint16_t col = alarm == HA_TRIGGERED ? C_CORAL : alarm == HA_ARMED ? C_MINT : C_PEACH;
-    const float cx = SCR_C, cy = 37;
-    addArc(s, cx, cy - 3, 3.5f, 6.0f, 250, 470, col, show ? 255 : 0);
-    addRRect(s, cx, cy + 4, 17, 12, 3, col, show ? 255 : 0);
 }
 
 // Always the same primitives in the same order; the unused ones have alpha 0.
@@ -86,12 +90,9 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     const WeatherData &w = *gWx;
     bool have = w.fetchedAt != 0;
     char b[56], up[24];
-    int64_t nowS = ft.realMs / 1000;
-    uint8_t alarm = nowS < gHa.alarmUntil ? gHa.alarm : HA_NONE;
-    bool notice = nowS < gHa.noticeUntil && gHa.notice[0];
+    bool notice = ft.realMs / 1000 < gHa.noticeUntil && gHa.notice[0];
 
     wxRainRim(s, ft, w, have);
-    wxLock(s, alarm);
 
     strftime(b, sizeof(b), "%a %e %b", &ft.local);
     upperCopy(up, b, sizeof(up));
@@ -101,7 +102,7 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     *dst = 0;
     addText(s, up, SCR_C, 62, F13, C_DIM, ALIGN_CENTER, 3);
 
-    snprintf(b, sizeof(b), "%d:%02d", (ft.local.tm_hour % 12) ? ft.local.tm_hour % 12 : 12, ft.local.tm_min);
+    fmtClock(b, sizeof(b), ft.local);
     addText(s, b, SCR_C, 116, D70, C_TEXT);
 
     const float rowY = 196;
@@ -113,10 +114,7 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     addRing(s, tempX + textWidth(b, F40) + 9, rowY - 12, 3.5f, 6.5f, C_TEXT, have ? 255 : 0);
 
     const char *word = !have ? (gNet.ap ? "No internet" : "Waiting for weather") : wxWord(w.code, w.isDay);
-    uint16_t wordCol = have ? C_TEXT : C_DIM;
-    if (alarm == HA_TRIGGERED) word = "Alarm triggered", wordCol = C_CORAL;
-    else if (alarm == HA_PENDING) word = "Alarm entry delay", wordCol = C_PEACH;
-    addText(s, word, SCR_C, 244, F21, wordCol);
+    addText(s, word, SCR_C, 244, F21, have ? C_TEXT : C_DIM);
 
     // Today's range until 6 pm, then tomorrow's.
     int d = ft.local.tm_hour >= 18 ? 1 : 0;
@@ -132,12 +130,8 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     else if (have) snprintf(b, sizeof(b), "Feels like %ld", lroundf(w.feelsC));
     else b[0] = 0;
     uint16_t lineCol = stale ? C_CORAL : C_FAINT;
-    if (notice) {  // a message from Home Assistant wins, trimmed to fit the curve
-        strlcpy(b, gHa.notice, sizeof(b));
-        size_t full = strlen(b);
-        for (size_t n = full; n > 0 && textWidth(b, F13) > 166; n--) b[n - 1] = 0;
-        char *space = strrchr(b, ' ');
-        if (strlen(b) < full && space && space - b > (long)strlen(b) / 2) *space = 0;  // end on a whole word
+    if (notice) {  // a message from Home Assistant wins
+        fitNotice(b, sizeof(b));
         lineCol = C_PEACH;
     }
     addText(s, b, SCR_C, 300, F13, lineCol, ALIGN_CENTER, 0, have || notice ? 255 : 0);

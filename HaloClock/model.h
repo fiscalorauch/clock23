@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum FaceId { FACE_WEATHER, FACE_COUNT };
+enum FaceId { FACE_WEATHER, FACE_ALARM, FACE_COUNT };
 
 struct City { const char *label; const char *posix; };
 static const City kCities[] = {
@@ -107,8 +107,12 @@ NetInfo gNet = {false, "", ""};
 // ---- Home Assistant status -------------------------------------------------
 // Sent by Home Assistant (POST /api/ha) and kept in RAM only. Each part has an
 // expiry time, so the face can never show a stale state if Home Assistant stops.
-enum HaAlarm : uint8_t { HA_NONE, HA_DISARMED, HA_ARMED, HA_ARMING, HA_PENDING, HA_TRIGGERED };
-static const char *const kHaAlarmNames[] = {"none", "disarmed", "armed", "arming", "pending", "triggered"};
+// Everything from HA_ARMED_HOME on shows the Alarm face.
+enum HaAlarm : uint8_t {
+    HA_NONE, HA_DISARMED, HA_ARMED_HOME, HA_ARMED_AWAY, HA_ARMED_NIGHT, HA_ARMED_OTHER, HA_ARMING, HA_PENDING, HA_TRIGGERED
+};
+static const char *const kHaAlarmNames[] = {"none", "disarmed", "armed_home", "armed_away", "armed_night",
+                                            "armed", "arming", "pending", "triggered"};
 
 struct HaStatus {
     uint8_t alarm;
@@ -121,9 +125,15 @@ static HaStatus gHa = {};
 // Maps a Home Assistant alarm panel state to what the clock shows.
 static uint8_t haAlarmFromState(const char *s) {
     if (!strcmp(s, "disarmed")) return HA_DISARMED;
-    if (!strncmp(s, "armed_", 6)) return HA_ARMED;
+    if (!strcmp(s, "armed_home")) return HA_ARMED_HOME;
+    if (!strcmp(s, "armed_away")) return HA_ARMED_AWAY;
+    if (!strcmp(s, "armed_night")) return HA_ARMED_NIGHT;
+    if (!strncmp(s, "armed_", 6)) return HA_ARMED_OTHER;  // vacation, custom bypass
     if (!strcmp(s, "arming")) return HA_ARMING;
     if (!strcmp(s, "pending")) return HA_PENDING;
     if (!strcmp(s, "triggered")) return HA_TRIGGERED;
     return HA_NONE;  // unknown, unavailable, disarming
 }
+
+// The alarm state to show right now, or HA_NONE once Home Assistant's last report expired.
+static uint8_t haAlarmAt(int64_t nowS) { return nowS < gHa.alarmUntil ? gHa.alarm : HA_NONE; }

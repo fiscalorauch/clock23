@@ -68,6 +68,8 @@ static uint8_t gBacklightPct = 0;
 
 static uint8_t targetBrightness() {
     if (!timeValid()) return S.brightness;
+    uint8_t alarm = haAlarmAt(time(nullptr));
+    if (alarm == HA_PENDING || alarm == HA_TRIGGERED) return 100;  // never dim an alarm
     struct tm t;
     int ms;
     displayTime(t, ms);

@@ -22,7 +22,7 @@
 #include <Arduino_GC9B72.h>
 #include <esp_ota_ops.h>
 
-#define FIRMWARE_VERSION "1.3.2"
+#define FIRMWARE_VERSION "1.3.3"
 
 // ---- Wi-Fi -----------------------------------------------------------------
 #if __has_include("secrets.h")
@@ -147,5 +147,5 @@ void loop() {
 
     unsigned long t0 = micros();
     drawClock();
-    analyticsFrame(micros() - t0, gap, timeValid() ? FACE_WEATHER : FACE_COUNT);
+    analyticsFrame(micros() - t0, gap, gShownFace >= 0 && gShownFace < FACE_COUNT ? gShownFace : FACE_COUNT);
 }

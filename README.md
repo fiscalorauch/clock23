@@ -1,12 +1,12 @@
 # Halo
 
-A 2.1" round smart clock, built on an ESP32-C3 Zero and a 360×360 GC9B72 TFT. It started as a classroom clock and is now a single-purpose home weather clock.
+A 2.1" round smart clock, built on an ESP32-C3 Zero and a 360×360 GC9B72 TFT. It started as a classroom clock and is now a home weather clock with an alarm face for Home Assistant.
 
 - **Weather face:** time, temperature, conditions, high and low, and the next 12 hours of rain chance around the rim.
 - **Night dimming:** the backlight drops to a low level on a schedule.
 - **Web dashboard:** at `http://halo.local`, with a JSON API for tools such as Home Assistant.
 - **Self-update:** the dashboard's Update button installs the latest GitHub release.
-- **Home Assistant:** reads and controls the clock, and shows the alarm state and short messages on the face.
+- **Home Assistant:** reads and controls the clock. The clock switches to an Alarm face while the alarm is armed and shows short messages from Home Assistant.
 
 Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
 
@@ -55,6 +55,6 @@ POST bodies are form-encoded.
 
 Home Assistant reaches the clock at `http://halo.local`; its HTTP client resolves `.local` names itself, so the clock's DHCP address can change freely. The package lives in the Home Assistant project (`ha/packages/halo_clock.yaml`). It polls `/api/state`, offers brightness, night dimming, weather refresh and update controls, and sends the alarm state every 5 minutes and on every change.
 
-On the face, a lock above the date means the alarm is armed (green), arming or in entry delay (peach) or triggered (coral). Entry delay and triggered also replace the conditions line. A notice replaces the bottom line. Everything from Home Assistant expires on its own, so if Home Assistant stops, the face clears within 15 minutes.
+While the alarm is armed the clock shows the **Alarm face** instead of Weather: the mode (Away, Home or Night), a lock, the time and a one-line forecast. Arming shows in peach. Entry delay turns the whole screen peach and triggered turns it coral, both at full brightness even during night dimming. Disarming returns to the Weather face. A notice from Home Assistant replaces the bottom line on either face. Everything from Home Assistant expires on its own, so if Home Assistant stops, the clock returns to Weather within 15 minutes.
 
 The API has no login. Keep it on a trusted home network and don't expose it to the internet.
