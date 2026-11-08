@@ -107,6 +107,7 @@ static int64_t parseLocal(const char *s) {
 static bool runScenario(const Scenario &sc) {
     defaultSettings();
     publishWeather(WeatherData{});
+    memset(&gHa, 0, sizeof(gHa));
     gUpdatePct = -1;
     applyHomeZone();
     int64_t start = parseLocal(sc.start);

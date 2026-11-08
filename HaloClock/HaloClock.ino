@@ -22,7 +22,7 @@
 #include <Arduino_GC9B72.h>
 #include <esp_ota_ops.h>
 
-#define FIRMWARE_VERSION "1.3.1"
+#define FIRMWARE_VERSION "1.3.2"
 
 // ---- Wi-Fi -----------------------------------------------------------------
 #if __has_include("secrets.h")

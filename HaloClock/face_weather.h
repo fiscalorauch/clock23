@@ -34,6 +34,16 @@ static void wxRainRim(Scene &s, const FrameTime &ft, const WeatherData &w, bool 
     addCircle(s, x, y, 3.5f, C_PEACH);
 }
 
+// A lock above the date while the alarm is armed, arming, in entry delay or
+// triggered. Nothing shows while it's disarmed or Home Assistant is silent.
+static void wxLock(Scene &s, uint8_t alarm) {
+    bool show = alarm >= HA_ARMED;
+    uint16_t col = alarm == HA_TRIGGERED ? C_CORAL : alarm == HA_ARMED ? C_MINT : C_PEACH;
+    const float cx = SCR_C, cy = 37;
+    addArc(s, cx, cy - 3, 3.5f, 6.0f, 250, 470, col, show ? 255 : 0);
+    addRRect(s, cx, cy + 4, 17, 12, 3, col, show ? 255 : 0);
+}
+
 // Always the same primitives in the same order; the unused ones have alpha 0.
 static void wxIconDraw(Scene &s, float cx, float cy, const WeatherData &w, bool have) {
     WxIcon ic = wxIcon(w.code);
@@ -75,9 +85,13 @@ static void wxIconDraw(Scene &s, float cx, float cy, const WeatherData &w, bool 
 static void weatherDynamic(Scene &s, const FrameTime &ft) {
     const WeatherData &w = *gWx;
     bool have = w.fetchedAt != 0;
-    char b[40], up[24];
+    char b[56], up[24];
+    int64_t nowS = ft.realMs / 1000;
+    uint8_t alarm = nowS < gHa.alarmUntil ? gHa.alarm : HA_NONE;
+    bool notice = nowS < gHa.noticeUntil && gHa.notice[0];
 
     wxRainRim(s, ft, w, have);
+    wxLock(s, alarm);
 
     strftime(b, sizeof(b), "%a %e %b", &ft.local);
     upperCopy(up, b, sizeof(up));
@@ -99,7 +113,10 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     addRing(s, tempX + textWidth(b, F40) + 9, rowY - 12, 3.5f, 6.5f, C_TEXT, have ? 255 : 0);
 
     const char *word = !have ? (gNet.ap ? "No internet" : "Waiting for weather") : wxWord(w.code, w.isDay);
-    addText(s, word, SCR_C, 244, F21, have ? C_TEXT : C_DIM);
+    uint16_t wordCol = have ? C_TEXT : C_DIM;
+    if (alarm == HA_TRIGGERED) word = "Alarm triggered", wordCol = C_CORAL;
+    else if (alarm == HA_PENDING) word = "Alarm entry delay", wordCol = C_PEACH;
+    addText(s, word, SCR_C, 244, F21, wordCol);
 
     // Today's range until 6 pm, then tomorrow's.
     int d = ft.local.tm_hour >= 18 ? 1 : 0;
@@ -114,5 +131,14 @@ static void weatherDynamic(Scene &s, const FrameTime &ft) {
     else if (stale) snprintf(b, sizeof(b), "Updated %ld days ago", age / 86400);
     else if (have) snprintf(b, sizeof(b), "Feels like %ld", lroundf(w.feelsC));
     else b[0] = 0;
-    addText(s, b, SCR_C, 300, F13, stale ? C_CORAL : C_FAINT, ALIGN_CENTER, 0, have ? 255 : 0);
+    uint16_t lineCol = stale ? C_CORAL : C_FAINT;
+    if (notice) {  // a message from Home Assistant wins, trimmed to fit the curve
+        strlcpy(b, gHa.notice, sizeof(b));
+        size_t full = strlen(b);
+        for (size_t n = full; n > 0 && textWidth(b, F13) > 166; n--) b[n - 1] = 0;
+        char *space = strrchr(b, ' ');
+        if (strlen(b) < full && space && space - b > (long)strlen(b) / 2) *space = 0;  // end on a whole word
+        lineCol = C_PEACH;
+    }
+    addText(s, b, SCR_C, 300, F13, lineCol, ALIGN_CENTER, 0, have || notice ? 255 : 0);
 }

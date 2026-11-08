@@ -103,3 +103,27 @@ static bool versionNewer(const char *a, const char *b) {
 
 struct NetInfo { bool ap; char ip[16]; char ssid[33]; };
 NetInfo gNet = {false, "", ""};
+
+// ---- Home Assistant status -------------------------------------------------
+// Sent by Home Assistant (POST /api/ha) and kept in RAM only. Each part has an
+// expiry time, so the face can never show a stale state if Home Assistant stops.
+enum HaAlarm : uint8_t { HA_NONE, HA_DISARMED, HA_ARMED, HA_ARMING, HA_PENDING, HA_TRIGGERED };
+static const char *const kHaAlarmNames[] = {"none", "disarmed", "armed", "arming", "pending", "triggered"};
+
+struct HaStatus {
+    uint8_t alarm;
+    int64_t alarmUntil;   // epoch seconds
+    char notice[48];
+    int64_t noticeUntil;
+};
+static HaStatus gHa = {};
+
+// Maps a Home Assistant alarm panel state to what the clock shows.
+static uint8_t haAlarmFromState(const char *s) {
+    if (!strcmp(s, "disarmed")) return HA_DISARMED;
+    if (!strncmp(s, "armed_", 6)) return HA_ARMED;
+    if (!strcmp(s, "arming")) return HA_ARMING;
+    if (!strcmp(s, "pending")) return HA_PENDING;
+    if (!strcmp(s, "triggered")) return HA_TRIGGERED;
+    return HA_NONE;  // unknown, unavailable, disarming
+}

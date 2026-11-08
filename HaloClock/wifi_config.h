@@ -58,6 +58,9 @@ static bool wifiJoin(uint32_t timeoutMs) {
     if (!strlen(W.ssid)) return false;
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(HOSTNAME);
+    // Lets halo.local answer IPv6 lookups too. Apple devices otherwise wait
+    // about 5 s for an IPv6 answer that never comes.
+    WiFi.enableIPv6();
     // If the C3 struggles to connect, or the screen glitches while Wi-Fi is busy:
     // WiFi.setTxPower(WIFI_POWER_8_5dBm);
     if (W.kind == WIFI_KIND_SCHOOL) {

@@ -59,6 +59,33 @@ static void wxArrives(int64_t now, int64_t start) {
     if (now - start == 3000) publishWeather(wxSample(start, 61, 15, true));
 }
 
+static void haArmed(int64_t t) {
+    wxPartly(t);
+    gHa.alarm = HA_ARMED; gHa.alarmUntil = t / 1000 + 900;
+}
+static void haTriggered(int64_t t) {
+    wxRain(t);
+    gHa.alarm = HA_TRIGGERED; gHa.alarmUntil = t / 1000 + 900;
+}
+static void haNotice(int64_t t) {
+    wxPartly(t);
+    strlcpy(gHa.notice, "Bins out tonight", sizeof(gHa.notice)); gHa.noticeUntil = t / 1000 + 600;
+}
+static void haLongNotice(int64_t t) {
+    wxSun(t);
+    gHa.alarm = HA_PENDING; gHa.alarmUntil = t / 1000 + 900;
+    strlcpy(gHa.notice, "Front door has been open for ten minutes", sizeof(gHa.notice)); gHa.noticeUntil = t / 1000 + 600;
+}
+// The alarm arms, then everything expires mid-run as if Home Assistant stopped.
+static void haExpire(int64_t t) {
+    wxPartly(t);
+    gHa.alarm = HA_ARMING; gHa.alarmUntil = t / 1000 + 3;
+    strlcpy(gHa.notice, "Garage open", sizeof(gHa.notice)); gHa.noticeUntil = t / 1000 + 5;
+}
+static void haNoWeather(int64_t t) {
+    strlcpy(gHa.notice, "Bins out tonight", sizeof(gHa.notice)); gHa.noticeUntil = t / 1000 + 600;
+}
+
 static void updateRun(int64_t now, int64_t start) { gUpdatePct = (int8_t)((now - start) / 200 > 100 ? 100 : (now - start) / 200); }
 
 static void addWeatherScenarios(std::vector<Scenario> &v) {
@@ -75,6 +102,12 @@ static void addWeatherScenarios(std::vector<Scenario> &v) {
     v.push_back({"weather_arrives", "2026-09-15 09:15:00", 6, 100, nullptr, wxArrives});
     v.push_back({"weather_codes", "2026-09-15 15:00:00", 28, 100, nullptr, wxCycle});
     v.push_back({"weather_hours", "2026-09-15 23:30:00", 14 * 3600, 60000, wxRain, nullptr});
+    v.push_back({"ha_armed", "2026-09-15 22:10:00", 2, 100, haArmed, nullptr});
+    v.push_back({"ha_triggered", "2026-09-15 02:31:00", 2, 100, haTriggered, nullptr});
+    v.push_back({"ha_notice", "2026-09-15 19:40:00", 2, 100, haNotice, nullptr});
+    v.push_back({"ha_long_notice", "2026-12-20 13:30:00", 2, 100, haLongNotice, nullptr});
+    v.push_back({"ha_expire", "2026-09-15 09:15:00", 8, 100, haExpire, nullptr});
+    v.push_back({"ha_no_weather", "2026-09-15 09:15:00", 2, 100, haNoWeather, nullptr});
     v.push_back({"update_progress", "2026-09-15 09:15:00", 21, 100, wxPartly, updateRun});
 }
 
@@ -108,6 +141,10 @@ static int weatherParserTests() {
     check(nightActive(60) && !nightActive(120), "night same day");
     S.nightOn = 0;
     check(!nightActive(90), "night off");
+    check(haAlarmFromState("armed_away") == HA_ARMED && haAlarmFromState("armed_night") == HA_ARMED, "alarm armed");
+    check(haAlarmFromState("disarmed") == HA_DISARMED && haAlarmFromState("triggered") == HA_TRIGGERED, "alarm states");
+    check(haAlarmFromState("pending") == HA_PENDING && haAlarmFromState("arming") == HA_ARMING, "alarm delays");
+    check(haAlarmFromState("unavailable") == HA_NONE && haAlarmFromState("") == HA_NONE, "alarm unknown");
     printf("parser and logic tests: %s\n", bad ? "FAIL" : "PASS");
     return bad;
 }

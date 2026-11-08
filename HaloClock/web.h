@@ -43,7 +43,7 @@ static void wxJson(String &o) {
 static void sendState() {
     A.requests++;
     String o;
-    o.reserve(2800);
+    o.reserve(1600);
     o += "{\"firmware\":\"" FIRMWARE_VERSION "\"";
     o += ",\"deviceName\":"; jsonStr(o, gDeviceName);
     o += ",\"brightness\":"; o += S.brightness;
@@ -58,6 +58,17 @@ static void sendState() {
     o += ",\"nightEnd\":"; o += S.nightEnd;
     o += ",\"backlight\":"; o += gBacklightPct;
     o += ",\"wx\":"; wxJson(o);
+    o += ",\"rssi\":"; o += gNet.ap ? 0 : (int)WiFi.RSSI();
+    o += ",\"uptime\":"; o += uptimeSeconds();
+    {
+        int64_t now = realNow();
+        bool alarmOn = now < gHa.alarmUntil, noticeOn = now < gHa.noticeUntil && gHa.notice[0];
+        o += ",\"ha\":{\"alarm\":\""; o += kHaAlarmNames[alarmOn ? gHa.alarm : HA_NONE]; o += '"';
+        o += ",\"alarmFor\":"; o += alarmOn ? (long)(gHa.alarmUntil - now) : 0L;
+        o += ",\"notice\":"; jsonStr(o, noticeOn ? gHa.notice : "");
+        o += ",\"noticeFor\":"; o += noticeOn ? (long)(gHa.noticeUntil - now) : 0L;
+        o += '}';
+    }
     o += ",\"update\":{\"state\":\""; o += kUpdateStates[gUpState]; o += '"';
     o += ",\"latest\":"; jsonStr(o, gUpLatest);
     o += ",\"pct\":"; o += (int)gUpdatePct;
@@ -136,6 +147,23 @@ static void handleUpdate() {
     bool busy = gUpState == UP_CHECKING || gUpState == UP_INSTALLING || gUpState == UP_DONE;
     if (!busy && a == "check") gUpCheckReq = true;
     else if (!busy && a == "install") gUpInstallReq = true;
+    sendState();
+}
+
+// POST /api/ha — status from Home Assistant: alarm=<alarm panel state> and/or
+// notice=<short text> (empty clears it). Each lasts ttl seconds (default 15 min),
+// so Home Assistant resends them; if it stops, the face clears itself.
+static void handleHa() {
+    long ttl = server.hasArg("ttl") ? constrain(server.arg("ttl").toInt(), 30L, 86400L) : 900L;
+    int64_t now = realNow();
+    if (server.hasArg("alarm")) {
+        gHa.alarm = haAlarmFromState(server.arg("alarm").c_str());
+        gHa.alarmUntil = now + ttl;
+    }
+    if (server.hasArg("notice")) {
+        copyArg("notice", gHa.notice, sizeof(gHa.notice));
+        gHa.noticeUntil = gHa.notice[0] ? now + ttl : 0;
+    }
     sendState();
 }
 
@@ -242,6 +270,7 @@ static void webBegin() {
     server.on("/api/info", HTTP_GET, handleInfo);
     server.on("/api/weather", HTTP_ANY, handleWeather);
     server.on("/api/update", HTTP_POST, handleUpdate);
+    server.on("/api/ha", HTTP_POST, handleHa);
     server.onNotFound([] {
         server.sendHeader("Location", "/");
         server.send(302, "text/plain", "");
